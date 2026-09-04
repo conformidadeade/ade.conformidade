@@ -8,6 +8,12 @@
 4. **Item 17 — "Próximos da liberação":** adiado. Não será implementado no MVP; fica pendente de definição futura do que significa "próximo".
 5. **Status `RETORNADO`:** é um estado persistente e visível (aparece no Mapa, alimenta o filtro "Retornados" do item 17), não um rótulo momentâneo. Uma combinação `RETORNADO` só sai desse estado quando o próximo processo correto é lançado nela — nesse momento vira `EM_CONSTRUCAO(1)` (ou já `LIBERADO` se a diretriz for 1).
 
+## Assumidas ao implementar (detalhes não cobertos pelo requisito, cosméticos/operacionais — não regras de negócio)
+
+- **Filtros de Mês/Ano do Mapa (item 17):** aplicados ao indicador "Devoluções no mês" (contagem por `monthKey` de registro), não a um filtro de período sobre `releasedAt`. Se a liderança quiser também filtrar quais combinações aparecem por período de liberação/retorno, isso é um filtro adicional a especificar.
+- **"Devoluções no mês" no Mapa (item 16):** implementado como o contador de RELATÓRIO do item 10 (toda devolução do mês, qualquer estado), não o contador interno da regra de retorno — são propositalmente números diferentes; ver `ARCHITECTURE.md`.
+- **Perfis de acesso (item 21):** implementados como enum fixo em `User.role` (não uma tabela RBAC configurável) porque o requisito lista exatamente 3 perfis fixos para a v1. Pode evoluir para RBAC configurável se a liderança pedir mais granularidade no futuro.
+
 ## Em aberto — não implementar sem confirmar (item 28)
 
 Sinalizadas no requisito original e ainda pendentes de decisão da liderança. Cada uma será revisitada quando a funcionalidade correspondente for implementada, com uma proposta explícita antes do código, não assumida silenciosamente:

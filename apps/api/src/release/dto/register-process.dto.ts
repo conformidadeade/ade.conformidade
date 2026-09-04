@@ -16,7 +16,4 @@ export class RegisterProcessDto {
   @IsOptional()
   @IsBoolean()
   allowDuplicate?: boolean;
-
-  // TODO(auth): substituir por req.user.id assim que o AuthModule/JwtAuthGuard existir.
-  @ApiProperty() @IsUUID() recordedByUserId!: string;
 }

@@ -10,7 +10,4 @@ export class RegisterReturnDto {
   @ApiProperty() @IsString() @MinLength(1) reason!: string;
   @ApiProperty({ required: false }) @IsOptional() @IsString() observation?: string;
   @ApiProperty() @IsDateString() occurredAt!: string;
-
-  // TODO(auth): substituir por req.user.id assim que o AuthModule/JwtAuthGuard existir.
-  @ApiProperty() @IsUUID() registeredByUserId!: string;
 }

@@ -8,7 +8,4 @@ export class ManualActionDto {
 
   @ApiProperty() @IsString() @MinLength(1) reason!: string;
   @ApiProperty() @IsDateString() occurredAt!: string;
-
-  // TODO(auth): substituir por req.user.id assim que o AuthModule/JwtAuthGuard existir.
-  @ApiProperty() @IsUUID() performedByUserId!: string;
 }
