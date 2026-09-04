@@ -29,7 +29,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup("docs", app, document);
 
-  const port = process.env.PORT ?? 3001;
+  // 4001/4002 (ver apps/web) — deliberadamente fora da faixa 3000-3002 usada
+  // pelo leilao-erp neste mesmo ambiente, para nunca colidir com ele.
+  const port = process.env.PORT ?? 4001;
   await app.listen(port);
 }
 
