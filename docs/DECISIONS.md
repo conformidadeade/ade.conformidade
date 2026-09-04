@@ -13,6 +13,8 @@
 - **Filtros de Mês/Ano do Mapa (item 17):** aplicados ao indicador "Devoluções no mês" (contagem por `monthKey` de registro), não a um filtro de período sobre `releasedAt`. Se a liderança quiser também filtrar quais combinações aparecem por período de liberação/retorno, isso é um filtro adicional a especificar.
 - **"Devoluções no mês" no Mapa (item 16):** implementado como o contador de RELATÓRIO do item 10 (toda devolução do mês, qualquer estado), não o contador interno da regra de retorno — são propositalmente números diferentes; ver `ARCHITECTURE.md`.
 - **Perfis de acesso (item 21):** implementados como enum fixo em `User.role` (não uma tabela RBAC configurável) porque o requisito lista exatamente 3 perfis fixos para a v1. Pode evoluir para RBAC configurável se a liderança pedir mais granularidade no futuro.
+- **Sessão do frontend:** bearer token (JWT) em localStorage com refresh automático, não cookies httpOnly + CSRF (padrão mais resistente a XSS usado no leilao-erp). Razoável para uso interno; reavaliar se o sistema for exposto além de rede interna/VPN.
+- **Dashboard (item 20):** todos os indicadores "por cliente/meio" (liberações e devoluções) são escopados ao mesmo mês/ano do restante do dashboard, para manter os números coerentes entre si — não são totais históricos.
 
 ## Em aberto — não implementar sem confirmar (item 28)
 
