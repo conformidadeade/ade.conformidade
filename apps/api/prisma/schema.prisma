@@ -1,0 +1,291 @@
+// Schema Prisma — Reanálise ERP
+//
+// Modelagem orientada a histórico e eventos (itens 13, 22, 25 do requisito):
+// nenhuma mudança de status de uma combinação Analista+Cliente+Meio é
+// gravada sem o evento imutável que a causou (ver model ReanalysisEvent).
+// A lógica que decide essas transições vive em @reanalise-erp/release-engine
+// (pacote puro, sem Prisma) — este schema só guarda estado + histórico.
+//
+// Sistema de uso interno de uma única organização: não há tenancy por
+// Company como no leilao-erp — os perfis (item 21) são um enum fixo em
+// User, não uma tabela de Role/Permission configurável, porque o
+// requisito lista exatamente 3 perfis fixos para a v1 (ver DECISIONS.md).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMINISTRADOR
+  LIDERANCA
+  ANALISTA
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  /// Vínculo opcional a um Analyst — permite que o próprio analista faça
+  /// login e consulte (item 21: perfil ANALISTA é predominantemente leitura).
+  analystId String? @unique
+  analyst   Analyst? @relation(fields: [analystId], references: [id], onDelete: SetNull)
+
+  refreshTokens       RefreshToken[]
+  auditLogs            AuditLog[]
+  guidelinesCreated    Guideline[]          @relation("GuidelineCreatedBy")
+  processesRecorded    AnalyzedProcess[]    @relation("ProcessRecordedBy")
+  returnsRecorded      ReanalysisReturn[]   @relation("ReturnRecordedBy")
+  eventsPerformed      ReanalysisEvent[]    @relation("EventPerformedBy")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// Log de auditoria genérico — append-only — para CRUD de cadastros,
+/// diretrizes e permissões (item 24). Mudanças de estado de uma
+/// combinação específica usam ReanalysisEvent, que carrega mais contexto
+/// de domínio; AuditLog cobre o resto.
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  entityType String
+  entityId   String
+  action     String /// CREATE | UPDATE | INACTIVATE | LOGIN | ...
+  before     Json?
+  after      Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guidelines    Guideline[]
+  combinations  AnalystClientMedia[]
+
+  @@map("clients")
+}
+
+model MediaChannel {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guidelines   Guideline[]
+  combinations AnalystClientMedia[]
+
+  @@map("media_channels")
+}
+
+model Analyst {
+  id           String   @id @default(uuid())
+  name         String
+  registration String? /// matrícula/sigla, quando aplicável
+  active       Boolean  @default(true)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User?
+  combinations AnalystClientMedia[]
+
+  @@map("analysts")
+}
+
+/// Diretriz de liberação (item 4/19). Versionada por linha: alterar uma
+/// diretriz nunca faz UPDATE na quantidade — encerra a vigente
+/// (supersededAt) e cria uma nova linha com effectiveFrom = agora. A
+/// diretriz "vigente" de um par Cliente+Meio é a linha com
+/// active = true. A troca de active=false/true das duas linhas é feita
+/// numa única transação (ver GuidelinesService), pois o Prisma não
+/// expressa aqui uma constraint de unicidade parcial (partial index)
+/// portável — a garantia de "só uma ativa por par" é de aplicação.
+model Guideline {
+  id             String    @id @default(uuid())
+  clientId       String
+  mediaChannelId String
+  targetCount    Int
+  /// Regra de devoluções para perder a liberação — hoje fixa em "2 no mês"
+  /// (item 19), mas mantida como campo configurável desde já.
+  returnLimit    Int       @default(2)
+  active         Boolean   @default(true)
+  effectiveFrom  DateTime  @default(now())
+  supersededAt   DateTime?
+  changeReason   String?
+  createdAt      DateTime  @default(now())
+  createdByUserId String
+
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  mediaChannel MediaChannel @relation(fields: [mediaChannelId], references: [id], onDelete: Restrict)
+  createdBy    User         @relation("GuidelineCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, mediaChannelId, active])
+  @@map("guidelines")
+}
+
+enum CombinationStatus {
+  EM_CONSTRUCAO
+  LIBERADO
+  RETORNADO
+}
+
+/// Entidade central do sistema (item 3): o estado de uma combinação
+/// Analista+Cliente+Meio. É o "read model" recalculável a partir de
+/// ReanalysisEvent — mantido aqui denormalizado só por performance do
+/// Mapa de Liberação (item 16).
+model AnalystClientMedia {
+  id             String            @id @default(uuid())
+  analystId      String
+  clientId       String
+  mediaChannelId String
+
+  status                 CombinationStatus @default(EM_CONSTRUCAO)
+  constructionCount      Int               @default(0)
+  monthlyReturnCount      Int               @default(0)
+  monthlyReturnMonthKey   String?
+  releasedAt             DateTime?
+  lastReturnAt           DateTime?
+  lastReturnReason       String?
+  lastMovementAt         DateTime          @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  analyst      Analyst      @relation(fields: [analystId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  mediaChannel MediaChannel @relation(fields: [mediaChannelId], references: [id], onDelete: Restrict)
+
+  processes AnalyzedProcess[]
+  returns   ReanalysisReturn[]
+  events    ReanalysisEvent[]
+
+  @@unique([analystId, clientId, mediaChannelId])
+  @@index([status])
+  @@map("analyst_client_media")
+}
+
+enum ProcessResult {
+  CORRETO
+  INCORRETO
+}
+
+model AnalyzedProcess {
+  id            String        @id @default(uuid())
+  combinationId String
+  piNumber      String
+  analysisDate  DateTime
+  result        ProcessResult
+  observation   String?
+  recordedByUserId String
+  createdAt     DateTime      @default(now())
+
+  combination AnalystClientMedia @relation(fields: [combinationId], references: [id], onDelete: Restrict)
+  recordedBy  User               @relation("ProcessRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  returns     ReanalysisReturn[]
+
+  /// Duplicidade (item 23): mesmo PI, mesma combinação, mesma data de
+  /// análise é bloqueado por padrão na camada de serviço (com opção
+  /// explícita de confirmar reprocessamento legítimo — ver DECISIONS.md,
+  /// item ainda em validação). O índice ajuda a checagem, não substitui a
+  /// regra de aplicação.
+  @@index([combinationId, piNumber, analysisDate])
+  @@map("analyzed_processes")
+}
+
+model ReanalysisReturn {
+  id            String   @id @default(uuid())
+  combinationId String
+  processId     String?
+  reason        String
+  observation   String?
+  occurredAt    DateTime
+  registeredByUserId String
+
+  /// Estado da combinação NO MOMENTO da devolução — é o que garante que
+  /// os dois contadores do item 10 nunca se confundam depois (regra de
+  /// retorno só olha contextState = LIBERADO).
+  contextState CombinationStatus
+  /// Mês/ano (YYYY-MM) da data de REGISTRO da devolução (item 9, decisão
+  /// confirmada) — usado para a contagem mensal da regra de retorno e
+  /// para o indicador de relatório do item 10.
+  monthKey     String
+
+  createdAt DateTime @default(now())
+
+  combination AnalystClientMedia @relation(fields: [combinationId], references: [id], onDelete: Restrict)
+  process     AnalyzedProcess?   @relation(fields: [processId], references: [id], onDelete: SetNull)
+  registeredBy User              @relation("ReturnRecordedBy", fields: [registeredByUserId], references: [id], onDelete: Restrict)
+
+  @@index([combinationId, monthKey])
+  @@index([combinationId, contextState, monthKey])
+  @@map("reanalysis_returns")
+}
+
+enum ReanalysisEventType {
+  PROCESS_CORRECT
+  RELEASED
+  RETURN_RESET
+  RETURN_COUNTED
+  AUTO_RETURN
+  MANUAL_RESET
+  MANUAL_RETURN
+  GUIDELINE_CHANGED
+}
+
+/// Linha do tempo append-only de uma combinação (item 13) — é a fonte de
+/// verdade; `AnalystClientMedia` é só a foto atual dela. Espelha 1:1 os
+/// eventos que `@reanalise-erp/release-engine` produz.
+model ReanalysisEvent {
+  id             String              @id @default(uuid())
+  combinationId  String
+  type           ReanalysisEventType
+  occurredAt     DateTime
+  detail         Json
+  performedByUserId String?
+  createdAt      DateTime            @default(now())
+
+  combination AnalystClientMedia @relation(fields: [combinationId], references: [id], onDelete: Restrict)
+  performedBy User?              @relation("EventPerformedBy", fields: [performedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([combinationId, occurredAt])
+  @@map("reanalysis_events")
+}
