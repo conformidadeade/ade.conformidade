@@ -48,6 +48,7 @@ model User {
   processesRecorded    AnalyzedProcess[]    @relation("ProcessRecordedBy")
   returnsRecorded      ReanalysisReturn[]   @relation("ReturnRecordedBy")
   eventsPerformed      ReanalysisEvent[]    @relation("EventPerformedBy")
+  skillEvidencesRecorded AnalystSkillEvidence[] @relation("SkillEvidenceRecordedBy")
 
   @@map("users")
 }
@@ -98,6 +99,7 @@ model Client {
 
   guidelines    Guideline[]
   combinations  AnalystClientMedia[]
+  skills        AnalystSkill[]
 
   @@map("clients")
 }
@@ -112,13 +114,16 @@ model MediaChannel {
 
   guidelines   Guideline[]
   combinations AnalystClientMedia[]
+  skills       AnalystSkill[]
 
   @@map("media_channels")
 }
 
 model Analyst {
   id           String   @id @default(uuid())
-  name         String
+  /// Único na operação (confirmado com a liderança) — é a chave usada para
+  /// resolver a coluna ANALISTA na importação de habilidades (item 6.3).
+  name         String   @unique
   registration String? /// matrícula/sigla, quando aplicável
   active       Boolean  @default(true)
   notes        String?
@@ -127,6 +132,7 @@ model Analyst {
 
   user         User?
   combinations AnalystClientMedia[]
+  skills       AnalystSkill[]
 
   @@map("analysts")
 }
@@ -298,4 +304,56 @@ model ReanalysisEvent {
 
   @@index([combinationId, occurredAt])
   @@map("reanalysis_events")
+}
+
+/// Origem de uma evidência de habilidade (adendo Fase 2, item 6.2) — as
+/// três alimentam a mesma tabela; guardada só para auditoria, nunca
+/// exibida como diferenciação visual no grid principal do Mapa de
+/// Habilidades (item 6.2).
+enum SkillEvidenceOrigin {
+  LANCAMENTO
+  MANUAL
+  IMPORTACAO
+}
+
+/// Mapa de Habilidades (item 6) — registro de competência histórica,
+/// deliberadamente PARALELO e INDEPENDENTE de AnalystClientMedia (item
+/// 6.5): uma habilidade aqui nunca libera, retorna ou afeta o motor de
+/// reanálise, e nunca é removida/inativada automaticamente por eventos
+/// desse motor (analista desligado, devolução, etc.).
+model AnalystSkill {
+  id             String   @id @default(uuid())
+  analystId      String
+  clientId       String
+  mediaChannelId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  analyst      Analyst                @relation(fields: [analystId], references: [id], onDelete: Restrict)
+  client       Client                 @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  mediaChannel MediaChannel           @relation(fields: [mediaChannelId], references: [id], onDelete: Restrict)
+  evidences    AnalystSkillEvidence[]
+
+  @@unique([analystId, clientId, mediaChannelId])
+  @@map("analyst_skills")
+}
+
+/// Evidência append-only de uma habilidade — um PI é só texto livre aqui
+/// também (mesma filosofia do item 1): não há FK para AnalyzedProcess,
+/// deliberadamente, para manter os dois sistemas desacoplados (item 6.5).
+/// PI duplicado entre evidências é esperado e não é erro (item 6.3) — por
+/// isso não há unicidade em piNumber.
+model AnalystSkillEvidence {
+  id               String              @id @default(uuid())
+  skillId          String
+  piNumber         String
+  origin           SkillEvidenceOrigin
+  recordedByUserId String
+  createdAt        DateTime            @default(now())
+
+  skill      AnalystSkill @relation(fields: [skillId], references: [id], onDelete: Restrict)
+  recordedBy User         @relation("SkillEvidenceRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([skillId, createdAt])
+  @@map("analyst_skill_evidences")
 }

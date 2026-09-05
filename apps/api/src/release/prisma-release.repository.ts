@@ -135,6 +135,34 @@ class TxReleaseRepository implements ReleaseRepositoryPort {
     return found;
   }
 
+  async recordSkillEvidence(input: {
+    analystId: string;
+    clientId: string;
+    mediaChannelId: string;
+    piNumber: string;
+    recordedByUserId: string;
+  }): Promise<void> {
+    const skill = await this.tx.analystSkill.upsert({
+      where: {
+        analystId_clientId_mediaChannelId: {
+          analystId: input.analystId,
+          clientId: input.clientId,
+          mediaChannelId: input.mediaChannelId,
+        },
+      },
+      create: { analystId: input.analystId, clientId: input.clientId, mediaChannelId: input.mediaChannelId },
+      update: {},
+    });
+    await this.tx.analystSkillEvidence.create({
+      data: {
+        skillId: skill.id,
+        piNumber: input.piNumber,
+        origin: "LANCAMENTO",
+        recordedByUserId: input.recordedByUserId,
+      },
+    });
+  }
+
   async createProcess(input: CreateProcessInput): Promise<{ id: string }> {
     const created = await this.tx.analyzedProcess.create({
       data: {

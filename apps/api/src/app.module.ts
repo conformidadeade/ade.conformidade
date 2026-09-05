@@ -8,6 +8,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { GuidelinesModule } from "./guidelines/guidelines.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ReleaseModule } from "./release/release.module";
+import { SkillsModule } from "./skills/skills.module";
 import { UsersModule } from "./users/users.module";
 
 @Module({
@@ -22,6 +23,7 @@ import { UsersModule } from "./users/users.module";
     CombinationsModule,
     DashboardModule,
     ReleaseModule,
+    SkillsModule,
   ],
 })
 export class AppModule {}

@@ -54,6 +54,33 @@ describe("ReleaseService (orquestração sobre release-engine)", () => {
     expect(repo.events.some((e) => e.type === "RELEASED")).toBe(true);
   });
 
+  test("lançamento correto numa combinação nova gera evidência de habilidade automaticamente (adendo Fase 2, item 6.2)", async () => {
+    await service.registerProcess({
+      analystId,
+      clientId,
+      mediaChannelId,
+      piNumber: "PI-1",
+      analysisDate: new Date("2026-01-05"),
+      result: "CORRETO",
+      recordedByUserId: userId,
+    });
+    expect(repo.skillEvidences).toHaveLength(1);
+    expect(repo.skillEvidences[0]).toMatchObject({ analystId, clientId, mediaChannelId, piNumber: "PI-1" });
+  });
+
+  test("processo INCORRETO não gera evidência de habilidade", async () => {
+    await service.registerProcess({
+      analystId,
+      clientId,
+      mediaChannelId,
+      piNumber: "PI-1",
+      analysisDate: new Date("2026-01-05"),
+      result: "INCORRETO",
+      recordedByUserId: userId,
+    });
+    expect(repo.skillEvidences).toHaveLength(0);
+  });
+
   test("PI duplicado (mesma combinação+PI+data) é bloqueado por padrão", async () => {
     await service.registerProcess({
       analystId,

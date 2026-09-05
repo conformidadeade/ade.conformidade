@@ -70,6 +70,19 @@ export interface ReleaseRepositoryPort {
    */
   findProcessByPiNumber(input: { combinationId: string; piNumber: string }): Promise<{ id: string } | null>;
   createProcess(input: CreateProcessInput): Promise<{ id: string }>;
+  /**
+   * Origem automática do Mapa de Habilidades (adendo Fase 2, item 6.2):
+   * todo lançamento correto marca a habilidade correspondente e registra
+   * o PI como evidência, na mesma transação do processo — sistema
+   * paralelo ao motor de reanálise (item 6.5), nunca lido por ele.
+   */
+  recordSkillEvidence(input: {
+    analystId: string;
+    clientId: string;
+    mediaChannelId: string;
+    piNumber: string;
+    recordedByUserId: string;
+  }): Promise<void>;
   createReturn(input: CreateReturnInput): Promise<{ id: string }>;
   saveStateAndEvents(input: SaveStateAndEventsInput): Promise<void>;
 }

@@ -25,6 +25,13 @@ export class InMemoryReleaseRepository implements ReleaseRepositoryPort, Release
   readonly processes: Array<CreateProcessInput & { id: string }> = [];
   readonly returns: Array<CreateReturnInput & { id: string }> = [];
   readonly events: Array<{ combinationId: string; type: string; detail: unknown }> = [];
+  readonly skillEvidences: Array<{
+    analystId: string;
+    clientId: string;
+    mediaChannelId: string;
+    piNumber: string;
+    recordedByUserId: string;
+  }> = [];
 
   setGuideline(clientId: string, mediaChannelId: string, target: number) {
     this.guidelines.set(key("*", clientId, mediaChannelId), target);
@@ -94,6 +101,16 @@ export class InMemoryReleaseRepository implements ReleaseRepositoryPort, Release
     const id = randomUUID();
     this.processes.push({ ...input, id });
     return { id };
+  }
+
+  async recordSkillEvidence(input: {
+    analystId: string;
+    clientId: string;
+    mediaChannelId: string;
+    piNumber: string;
+    recordedByUserId: string;
+  }): Promise<void> {
+    this.skillEvidences.push({ ...input });
   }
 
   async createReturn(input: CreateReturnInput): Promise<{ id: string }> {

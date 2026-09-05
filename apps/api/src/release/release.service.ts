@@ -107,6 +107,19 @@ export class ReleaseService {
         observation: input.observation,
         recordedByUserId: input.recordedByUserId,
       });
+
+      // Mapa de Habilidades (adendo Fase 2, item 6.2) — todo lançamento
+      // correto marca a habilidade automaticamente, independente do
+      // status atual da combinação no motor de reanálise (EM_CONSTRUCAO,
+      // LIBERADO ou RETORNADO); os dois sistemas são paralelos (item 6.5).
+      await repo.recordSkillEvidence({
+        analystId: input.analystId,
+        clientId: input.clientId,
+        mediaChannelId: input.mediaChannelId,
+        piNumber: input.piNumber,
+        recordedByUserId: input.recordedByUserId,
+      });
+
       await repo.saveStateAndEvents({
         combinationId: combination.id,
         state,
