@@ -14,6 +14,16 @@ export const metadata: Metadata = {
   },
   description:
     "ADE — Administração de Dados e Estratégias: controle de liberação de reanálise de processos de mídia.",
+  icons: {
+    // Tamanhos gerados a partir de public/favicon.png (500x500 original) —
+    // ver adendo de identidade visual. O ícone já tem fundo escuro e anel
+    // amarelo próprios, então funciona igual em light/dark do navegador.
+    icon: [
+      { url: "/icons/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

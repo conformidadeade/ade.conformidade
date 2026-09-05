@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { ApiError, api } from "@/lib/api/client";
@@ -43,9 +44,14 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center gap-2 pb-2">
-          <div className="size-10 rounded-lg bg-primary text-primary-foreground grid place-items-center text-lg font-bold mb-1">
-            R
-          </div>
+          <Image
+            src="/brand/ade-logo.png"
+            alt="ADE"
+            width={96}
+            height={96}
+            priority
+            className="rounded-full mb-1"
+          />
           <CardTitle className="text-lg">ADE</CardTitle>
           <CardDescription>Administração de Dados e Estratégias</CardDescription>
         </CardHeader>

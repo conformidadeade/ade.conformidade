@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -43,9 +44,7 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <div className="flex items-center gap-2 px-5 h-16 border-b border-sidebar-border">
-        <div className="size-7 rounded-md bg-sidebar-primary text-sidebar-primary-foreground grid place-items-center text-sm font-bold">
-          R
-        </div>
+        <Image src="/brand/ade-logo.png" alt="ADE" width={32} height={32} className="rounded-full shrink-0" />
         <span className="font-semibold text-sm">ADE</span>
       </div>
       <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-1">
