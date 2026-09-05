@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, SkillEvidenceOrigin } from "@prisma/client";
 import * as ExcelJS from "exceljs";
 import { AuthenticatedUser } from "../auth/jwt-payload";
+import { cellToText } from "../common/excel-cell-text";
 import { PrismaService } from "../prisma/prisma.service";
 import { ListSkillsQuery } from "./dto/list-skills.query";
 import { SkillImportRowError, SkillsImportValidationError } from "./errors";
@@ -210,20 +211,36 @@ export class SkillsService {
     const REQUIRED_COLUMNS = ["ANALISTA", "CLIENTE", "MEIO", "PI"] as const;
     const colIndex: Partial<Record<(typeof REQUIRED_COLUMNS)[number], number>> = {};
     const headerRow = sheet.getRow(1);
+    // Cabeçalhos de verdade lidos da planilha, na ordem das colunas — usado
+    // só para a mensagem de erro (item 3), mostrando ao usuário exatamente
+    // o que foi encontrado, não só "isso está faltando".
+    const foundHeaders: string[] = [];
     headerRow.eachCell((cell, colNumber) => {
-      const key = String(cell.value ?? "").trim().toUpperCase();
+      // cellToText cobre rich text, hyperlink e fórmula — usar String(cell.value)
+      // direto aqui já foi a causa raiz de um bug real: uma célula de
+      // cabeçalho com formatação em partes do texto (comum em planilha
+      // editada à mão) vira um objeto rich text, e String(objeto) dá
+      // "[object Object]", que nunca bate com "MEIO"/"PI" mesmo a célula
+      // mostrando exatamente esse texto no Excel.
+      const key = cellToText(cell.value).trim().toUpperCase();
+      if (key) foundHeaders[colNumber - 1] = key;
       if ((REQUIRED_COLUMNS as readonly string[]).includes(key)) {
         colIndex[key as (typeof REQUIRED_COLUMNS)[number]] = colNumber;
       }
     });
     const missingColumns = REQUIRED_COLUMNS.filter((c) => !colIndex[c]);
     if (missingColumns.length > 0) {
+      const foundList = foundHeaders.filter(Boolean).join(", ") || "(nenhum cabeçalho reconhecido na linha 1)";
       throw new SkillsImportValidationError(
-        missingColumns.map((c) => ({ line: 1, column: c, value: "coluna ausente no cabeçalho" })),
+        missingColumns.map((c) => ({
+          line: 1,
+          column: c,
+          value: `esperado "${c}" — cabeçalhos encontrados no arquivo: ${foundList}`,
+        })),
       );
     }
 
-    const cellText = (row: ExcelJS.Row, col: number) => String(row.getCell(col).value ?? "").trim();
+    const cellText = (row: ExcelJS.Row, col: number) => cellToText(row.getCell(col).value).trim();
 
     const rows: { line: number; analystName: string; clientName: string; mediaName: string; piNumber: string }[] = [];
     sheet.eachRow((row, rowNumber) => {

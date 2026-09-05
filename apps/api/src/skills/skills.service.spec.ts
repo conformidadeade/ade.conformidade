@@ -13,6 +13,23 @@ async function buildWorkbookBuffer(rows: string[][]): Promise<Buffer> {
   return Buffer.from(arrayBuffer);
 }
 
+/** Permite controlar o cabeçalho exato — usado para reproduzir o bug de colunas fora de ordem e/ou rich text. */
+async function buildWorkbookWithHeader(
+  header: string[],
+  richTextCols: number[],
+  rows: string[][],
+): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Habilidades");
+  const headerRow = sheet.addRow(header);
+  for (const col of richTextCols) {
+    headerRow.getCell(col).value = { richText: [{ text: header[col - 1]! }] };
+  }
+  for (const row of rows) sheet.addRow(row);
+  const arrayBuffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
 interface FakeSkill {
   id: string;
   analystId: string;
@@ -124,6 +141,66 @@ describe("SkillsService.importFromWorkbook (adendo Fase 2, item 6.3)", () => {
     const result = await service.importFromWorkbook(buffer, "user-1");
     expect(result.rowsImported).toBe(1);
     expect(prisma.skills).toHaveLength(1);
+  });
+});
+
+describe("SkillsService.importFromWorkbook — bug: cabeçalho fora de ordem / rich text (relatado pelo usuário)", () => {
+  function buildSeed() {
+    return {
+      analysts: [{ id: "a1", name: "João Teste" }],
+      clients: [{ id: "c1", name: "SECOM" }],
+      mediaChannels: [{ id: "m1", name: "TV" }],
+    };
+  }
+
+  test("cabeçalho em ordem diferente da declarada no requisito (MEIO, PI, ANALISTA, CLIENTE) é reconhecido por nome, não por posição", async () => {
+    const prisma = buildPrismaFake(buildSeed());
+    const service = new SkillsService(prisma as never);
+    const buffer = await buildWorkbookWithHeader(
+      ["MEIO", "PI", "ANALISTA", "CLIENTE"],
+      [],
+      [["TV", "PI-1", "João Teste", "SECOM"]],
+    );
+
+    const result = await service.importFromWorkbook(buffer, "user-1");
+    expect(result.rowsImported).toBe(1);
+    expect(prisma.evidences[0]).toMatchObject({ piNumber: "PI-1" });
+  });
+
+  test("causa raiz do bug relatado: célula de cabeçalho com rich text (formatação em parte do texto) — antes virava \"[object Object]\" e a coluna era dada como ausente mesmo existindo", async () => {
+    const prisma = buildPrismaFake(buildSeed());
+    const service = new SkillsService(prisma as never);
+    // Reproduz exatamente o sintoma relatado: reordenar as colunas não
+    // resolvia porque o problema seguia a CÉLULA (rich text), não a posição.
+    const buffer = await buildWorkbookWithHeader(
+      ["ANALISTA", "CLIENTE", "MEIO", "PI"],
+      [3, 4], // MEIO e PI gravados como rich text, como uma planilha editada à mão costuma gerar
+      [["João Teste", "SECOM", "TV", "PI-1"]],
+    );
+
+    const result = await service.importFromWorkbook(buffer, "user-1");
+    expect(result.rowsImported).toBe(1);
+  });
+
+  test("coluna realmente ausente: mensagem de erro mostra os cabeçalhos que foram lidos de fato", async () => {
+    const prisma = buildPrismaFake(buildSeed());
+    const service = new SkillsService(prisma as never);
+    const buffer = await buildWorkbookWithHeader(
+      ["ANALISTA", "CLIENTE", "VEICULO", "PI"], // "VEICULO" no lugar de "MEIO" — coluna esperada de fato ausente
+      [],
+      [["João Teste", "SECOM", "TV", "PI-1"]],
+    );
+
+    try {
+      await service.importFromWorkbook(buffer, "user-1");
+      fail("deveria ter lançado SkillsImportValidationError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SkillsImportValidationError);
+      const err = error as SkillsImportValidationError;
+      expect(err.errors).toHaveLength(1);
+      expect(err.errors[0]!.column).toBe("MEIO");
+      expect(err.errors[0]!.value).toContain("ANALISTA, CLIENTE, VEICULO, PI");
+    }
   });
 });
 
