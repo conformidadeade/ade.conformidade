@@ -46,8 +46,8 @@ export default function LoginPage() {
           <div className="size-10 rounded-lg bg-primary text-primary-foreground grid place-items-center text-lg font-bold mb-1">
             R
           </div>
-          <CardTitle className="text-lg">Reanálise ERP</CardTitle>
-          <CardDescription>Controle de liberação de reanálise de processos de mídia</CardDescription>
+          <CardTitle className="text-lg">ADE</CardTitle>
+          <CardDescription>Administração de Dados e Estratégias</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">

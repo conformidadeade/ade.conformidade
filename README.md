@@ -1,9 +1,12 @@
-# Reanálise ERP
+# ADE — Administração de Dados e Estratégias
 
 Sistema interno para controlar o processo de reanálise de processos de
 mídia e o mecanismo de liberação de analistas por combinação
 **Analista + Cliente + Meio de veiculação**, substituindo o controle hoje
 feito em planilhas.
+
+> O repositório (`reanalise-erp`) mantém o nome técnico original — só a marca
+> voltada ao usuário (título, telas, logo) passou a se chamar **ADE**.
 
 Ver [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) para a modelagem completa
 e [`docs/DECISIONS.md`](docs/DECISIONS.md) para as decisões de negócio já

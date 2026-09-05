@@ -46,7 +46,7 @@ export function Sidebar() {
         <div className="size-7 rounded-md bg-sidebar-primary text-sidebar-primary-foreground grid place-items-center text-sm font-bold">
           R
         </div>
-        <span className="font-semibold text-sm">Reanálise ERP</span>
+        <span className="font-semibold text-sm">ADE</span>
       </div>
       <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-1">
         {items.map((item) => {

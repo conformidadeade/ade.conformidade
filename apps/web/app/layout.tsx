@@ -8,8 +8,12 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Reanálise ERP",
-  description: "Controle de liberação de reanálise de processos de mídia",
+  title: {
+    default: "ADE",
+    template: "%s · ADE",
+  },
+  description:
+    "ADE — Administração de Dados e Estratégias: controle de liberação de reanálise de processos de mídia.",
 };
 
 export const viewport: Viewport = {
