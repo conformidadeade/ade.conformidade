@@ -17,7 +17,8 @@ export interface RegisterProcessInput {
   mediaChannelId: string;
   piNumber: string;
   analysisDate: Date;
-  result: "CORRETO" | "INCORRETO";
+  /** Omitido pela tela de Lançamento (adendo Fase 2, item 2) — default CORRETO. */
+  result?: "CORRETO" | "INCORRETO";
   observation?: string;
   recordedByUserId: string;
   /** Confirma explicitamente que a duplicidade de PI é um reprocessamento legítimo (item 23). */

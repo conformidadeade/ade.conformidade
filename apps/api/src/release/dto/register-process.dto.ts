@@ -8,7 +8,18 @@ export class RegisterProcessDto {
 
   @ApiProperty() @IsString() @MinLength(1) piNumber!: string;
   @ApiProperty() @IsDateString() analysisDate!: string;
-  @ApiProperty({ enum: ["CORRETO", "INCORRETO"] }) @IsIn(["CORRETO", "INCORRETO"]) result!: "CORRETO" | "INCORRETO";
+
+  /**
+   * A tela de Lançamento não oferece mais esta escolha (adendo Fase 2,
+   * item 2) — todo lançamento feito por ela é implicitamente correto.
+   * Mantido opcional/aceito no contrato por compatibilidade (ex.: uso
+   * futuro por outra tela ou correção administrativa); quando ausente, o
+   * service grava CORRETO.
+   */
+  @ApiProperty({ enum: ["CORRETO", "INCORRETO"], required: false, default: "CORRETO" })
+  @IsOptional()
+  @IsIn(["CORRETO", "INCORRETO"])
+  result?: "CORRETO" | "INCORRETO";
 
   @ApiProperty({ required: false }) @IsOptional() @IsString() observation?: string;
 

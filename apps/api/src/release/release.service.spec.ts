@@ -116,6 +116,21 @@ describe("ReleaseService (orquestração sobre release-engine)", () => {
     expect(repo.events).toHaveLength(0);
   });
 
+  test("lançamento sem 'result' (tela de Lançamento não oferece mais a escolha, item 2) grava CORRETO por padrão", async () => {
+    const result = await service.registerProcess({
+      analystId,
+      clientId,
+      mediaChannelId,
+      piNumber: "PI-1",
+      analysisDate: new Date("2026-01-05"),
+      recordedByUserId: userId,
+    });
+    expect(result.status).toBe("EM_CONSTRUCAO");
+    expect(repo.processes).toHaveLength(1);
+    expect(repo.processes[0]!.result).toBe("CORRETO");
+    expect(repo.events.some((e) => e.type === "PROCESS_CORRECT")).toBe(true);
+  });
+
   test("registrar devolução numa combinação inexistente falha com erro claro", async () => {
     await expect(
       service.registerReturn({

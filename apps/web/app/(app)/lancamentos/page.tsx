@@ -34,7 +34,6 @@ export default function LancamentoProcessosPage() {
     mediaChannelId: "",
     piNumber: "",
     analysisDate: todayIso(),
-    result: "CORRETO" as "CORRETO" | "INCORRETO",
     observation: "",
   });
   const [duplicateInfo, setDuplicateInfo] = useState<{ existingProcessId: string } | null>(null);
@@ -65,8 +64,9 @@ export default function LancamentoProcessosPage() {
       <div>
         <h1 className="text-xl font-semibold">Lançamento de Processos</h1>
         <p className="text-sm text-muted-foreground">
-          Ao lançar um processo correto, a construção da combinação é atualizada automaticamente — e ela é
-          liberada sozinha ao atingir a diretriz.
+          Todo lançamento feito aqui é correto — a construção da combinação é atualizada automaticamente, e ela
+          é liberada sozinha ao atingir a diretriz. Um processo com problema não é lançado aqui: é registrado na
+          tela de Devoluções, com o PI correspondente.
         </p>
       </div>
 
@@ -130,7 +130,7 @@ export default function LancamentoProcessosPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="piNumber">PI / nº do processo</Label>
                 <Input
@@ -149,21 +149,6 @@ export default function LancamentoProcessosPage() {
                   onChange={(e) => setForm((f) => ({ ...f, analysisDate: e.target.value }))}
                   required
                 />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Resultado</Label>
-                <Select
-                  value={form.result}
-                  onValueChange={(v) => setForm((f) => ({ ...f, result: v as "CORRETO" | "INCORRETO" }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CORRETO">Correto</SelectItem>
-                    <SelectItem value="INCORRETO">Incorreto</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
