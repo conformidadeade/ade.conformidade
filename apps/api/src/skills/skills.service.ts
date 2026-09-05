@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma, SkillEvidenceOrigin } from "@prisma/client";
 import * as ExcelJS from "exceljs";
 import { AuthenticatedUser } from "../auth/jwt-payload";
@@ -41,6 +41,8 @@ export interface ImportResult {
  */
 @Injectable()
 export class SkillsService {
+  private readonly logger = new Logger(SkillsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /** Upsert da habilidade + evidência — usado pelas 3 origens (item 6.2). */
@@ -140,7 +142,19 @@ export class SkillsService {
    * gravar qualquer linha (tudo ou nada). PI duplicado — dentro da
    * planilha ou já existente — não é erro, vira só mais uma evidência.
    */
-  async importFromWorkbook(buffer: Buffer, userId: string): Promise<ImportResult> {
+  async importFromWorkbook(
+    buffer: Buffer,
+    userId: string,
+    fileMeta?: { originalName?: string; size?: number },
+  ): Promise<ImportResult> {
+    // Nível debug (não aparece em produção com o log level padrão) —
+    // mantido de propósito, não é temporário: foi o que permitiu confirmar
+    // rápido um bug real de "planilha com mais de uma aba lia sempre a
+    // primeira" (ver parseWorkbook) correlacionando arquivo da requisição
+    // com o que de fato foi parseado. Útil para qualquer relato parecido.
+    this.logger.debug(
+      `import recebido: arquivo="${fileMeta?.originalName ?? "?"}" tamanho=${fileMeta?.size ?? buffer.length}B usuario=${userId}`,
+    );
     const rows = await this.parseWorkbook(buffer);
 
     const [analysts, clients, mediaChannels] = await Promise.all([
@@ -198,46 +212,72 @@ export class SkillsService {
     return { rowsImported: rows.length, skillsAffected: skillIds.size };
   }
 
+  private static readonly REQUIRED_COLUMNS = ["ANALISTA", "CLIENTE", "MEIO", "PI"] as const;
+
+  /** Cabeçalhos (linha 1) de uma aba, na ordem das colunas — texto plano via cellToText. */
+  private readHeaders(sheet: ExcelJS.Worksheet): string[] {
+    const headers: string[] = [];
+    sheet.getRow(1).eachCell((cell, colNumber) => {
+      headers[colNumber - 1] = cellToText(cell.value).trim().toUpperCase();
+    });
+    return headers;
+  }
+
   private async parseWorkbook(
     buffer: Buffer,
   ): Promise<{ line: number; analystName: string; clientName: string; mediaName: string; piNumber: string }[]> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
+    if (workbook.worksheets.length === 0) {
       throw new SkillsImportValidationError([{ line: 0, column: "ANALISTA", value: "planilha vazia ou sem abas" }]);
     }
 
-    const REQUIRED_COLUMNS = ["ANALISTA", "CLIENTE", "MEIO", "PI"] as const;
-    const colIndex: Partial<Record<(typeof REQUIRED_COLUMNS)[number], number>> = {};
-    const headerRow = sheet.getRow(1);
-    // Cabeçalhos de verdade lidos da planilha, na ordem das colunas — usado
-    // só para a mensagem de erro (item 3), mostrando ao usuário exatamente
-    // o que foi encontrado, não só "isso está faltando".
-    const foundHeaders: string[] = [];
-    headerRow.eachCell((cell, colNumber) => {
-      // cellToText cobre rich text, hyperlink e fórmula — usar String(cell.value)
-      // direto aqui já foi a causa raiz de um bug real: uma célula de
-      // cabeçalho com formatação em partes do texto (comum em planilha
-      // editada à mão) vira um objeto rich text, e String(objeto) dá
-      // "[object Object]", que nunca bate com "MEIO"/"PI" mesmo a célula
-      // mostrando exatamente esse texto no Excel.
-      const key = cellToText(cell.value).trim().toUpperCase();
-      if (key) foundHeaders[colNumber - 1] = key;
-      if ((REQUIRED_COLUMNS as readonly string[]).includes(key)) {
-        colIndex[key as (typeof REQUIRED_COLUMNS)[number]] = colNumber;
-      }
-    });
-    const missingColumns = REQUIRED_COLUMNS.filter((c) => !colIndex[c]);
-    if (missingColumns.length > 0) {
-      const foundList = foundHeaders.filter(Boolean).join(", ") || "(nenhum cabeçalho reconhecido na linha 1)";
+    const required = SkillsService.REQUIRED_COLUMNS;
+    const sheetsHeaders = workbook.worksheets.map((s) => ({ sheet: s, headers: this.readHeaders(s) }));
+
+    this.logger.debug(
+      `planilha com ${sheetsHeaders.length} aba(s): ` +
+        sheetsHeaders.map(({ sheet: s, headers }) => `"${s.name}" [${headers.filter(Boolean).join(", ")}]`).join(" | "),
+    );
+
+    // Bug real corrigido aqui: a versão anterior sempre lia
+    // `workbook.worksheets[0]` — se a planilha do usuário tiver mais de uma
+    // aba (ex.: uma aba de controle antiga reaproveitada + a aba nova no
+    // formato pedido), e a aba certa não for a primeira, a importação lia
+    // cabeçalhos de uma aba completamente diferente da que tinha os dados
+    // reais, com mensagem de erro sem relação nenhuma com o que o usuário
+    // preencheu. Agora procura, entre TODAS as abas, a primeira que tem as
+    // 4 colunas exigidas — em qualquer ordem, não precisa ser a primeira aba.
+    const match = sheetsHeaders.find(({ headers }) => required.every((c) => headers.includes(c)));
+
+    if (!match) {
+      const perSheet = sheetsHeaders
+        .map(({ sheet: s, headers }) => `"${s.name}": ${headers.filter(Boolean).join(", ") || "(sem cabeçalho)"}`)
+        .join(" | ");
+      // Nenhuma aba tem as 4 juntas — reporta como "ausente" só o que
+      // realmente falta na aba mais próxima (a com mais colunas batendo),
+      // não as 4 de uma vez; isso mantém a mensagem certeira no caso comum
+      // de uma única aba com 1 coluna digitada errado, e ainda mostra o
+      // cabeçalho de toda aba do arquivo para o caso de aba errada.
+      const bestCandidate = sheetsHeaders.reduce((best, current) => {
+        const score = (h: string[]) => required.filter((c) => h.includes(c)).length;
+        return score(current.headers) > score(best.headers) ? current : best;
+      });
+      const missingInBest = required.filter((c) => !bestCandidate.headers.includes(c));
       throw new SkillsImportValidationError(
-        missingColumns.map((c) => ({
+        missingInBest.map((c) => ({
           line: 1,
           column: c,
-          value: `esperado "${c}" — cabeçalhos encontrados no arquivo: ${foundList}`,
+          value: `esperado "${c}" — não encontrado. Cabeçalhos por aba do arquivo: ${perSheet}`,
         })),
       );
+    }
+
+    const { sheet, headers } = match;
+    const colIndex: Partial<Record<(typeof required)[number], number>> = {};
+    for (const c of required) {
+      const idx = headers.indexOf(c);
+      if (idx >= 0) colIndex[c] = idx + 1; // eachCell/getCell usam índice 1-based
     }
 
     const cellText = (row: ExcelJS.Row, col: number) => cellToText(row.getCell(col).value).trim();

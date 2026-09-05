@@ -204,6 +204,67 @@ describe("SkillsService.importFromWorkbook — bug: cabeçalho fora de ordem / r
   });
 });
 
+describe("SkillsService.importFromWorkbook — bug (novo): planilha com mais de uma aba lia sempre a primeira", () => {
+  function buildSeed() {
+    return {
+      analysts: [{ id: "a1", name: "João Teste" }],
+      clients: [{ id: "c1", name: "SECOM" }],
+      mediaChannels: [{ id: "m1", name: "TV" }],
+    };
+  }
+
+  async function buildMultiSheetWorkbook(sheets: { name: string; header: string[]; rows: string[][] }[]): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    for (const s of sheets) {
+      const sheet = workbook.addWorksheet(s.name);
+      sheet.addRow(s.header);
+      for (const row of s.rows) sheet.addRow(row);
+    }
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  test("aba decoy antes da aba certa (reproduz o sintoma relatado) — encontra a aba com as 4 colunas em vez de travar na primeira", async () => {
+    const prisma = buildPrismaFake(buildSeed());
+    const service = new SkillsService(prisma as never);
+    const buffer = await buildMultiSheetWorkbook([
+      {
+        name: "Controle Antigo",
+        header: ["ANALISTA", "CLIENTE", "QTD", "IN", "JN", "MD", "ME", "RV", "TVR", "TVN", "CN", "RD", "IC", "JC"],
+        rows: [["João Teste", "SECOM", "5", "1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"]],
+      },
+      {
+        name: "Importar Habilidades",
+        header: ["ANALISTA", "CLIENTE", "MEIO", "PI"],
+        rows: [["João Teste", "SECOM", "TV", "PI-MULTISHEET"]],
+      },
+    ]);
+
+    const result = await service.importFromWorkbook(buffer, "user-1");
+    expect(result.rowsImported).toBe(1);
+    expect(prisma.evidences[0]).toMatchObject({ piNumber: "PI-MULTISHEET" });
+  });
+
+  test("nenhuma aba tem as 4 colunas juntas: mensagem de erro lista os cabeçalhos de cada aba, não só da primeira", async () => {
+    const prisma = buildPrismaFake(buildSeed());
+    const service = new SkillsService(prisma as never);
+    const buffer = await buildMultiSheetWorkbook([
+      { name: "Só duas colunas", header: ["ANALISTA", "CLIENTE"], rows: [] },
+      { name: "Outra aba qualquer", header: ["FOO", "BAR"], rows: [] },
+    ]);
+
+    try {
+      await service.importFromWorkbook(buffer, "user-1");
+      fail("deveria ter lançado SkillsImportValidationError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SkillsImportValidationError);
+      const err = error as SkillsImportValidationError;
+      expect(err.errors[0]!.value).toContain('"Só duas colunas": ANALISTA, CLIENTE');
+      expect(err.errors[0]!.value).toContain('"Outra aba qualquer": FOO, BAR');
+    }
+  });
+});
+
 describe("SkillsService.getEvidences — isolamento por ANALISTA (adendo Acesso restrito, item 1)", () => {
   function buildEvidencesFake(skill: { id: string; analystId: string } | null) {
     return {

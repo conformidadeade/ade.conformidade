@@ -65,7 +65,10 @@ export class SkillsController {
     if (!file) {
       throw new BadRequestException("Nenhum arquivo enviado.");
     }
-    return this.skillsService.importFromWorkbook(file.buffer, user.id);
+    return this.skillsService.importFromWorkbook(file.buffer, user.id, {
+      originalName: file.originalname,
+      size: file.size,
+    });
   }
 
   /** Exportações (adendo Fase 2, item 4) — sempre a base completa, restrito a LIDERANCA/ADMINISTRADOR. */
