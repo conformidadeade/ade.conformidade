@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { CombinationStatus, CombinationSummary } from "@reanalise-erp/types";
 import { api } from "@/lib/api/client";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
+import { CycleDrilldownDialog } from "@/components/combinations/cycle-drilldown-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ export default function MapaLiberacaoPage() {
   const [mediaChannelId, setMediaChannelId] = useState<string>(ALL);
   const [analystId, setAnalystId] = useState<string>(ALL);
   const [status, setStatus] = useState<CombinationStatus | undefined>(undefined);
+  const [drilldown, setDrilldown] = useState<{ id: string; label: string } | null>(null);
 
   const { data: clients } = useClients();
   const { data: mediaChannels } = useMediaChannels();
@@ -50,7 +52,8 @@ export default function MapaLiberacaoPage() {
       <div>
         <h1 className="text-xl font-semibold">Mapa de Liberação de Reanálise</h1>
         <p className="text-sm text-muted-foreground">
-          Situação de todas as combinações Analista + Cliente + Meio.
+          Situação de todas as combinações Analista + Cliente + Meio. Clique numa linha para ver os PIs do ciclo
+          atual.
         </p>
       </div>
 
@@ -147,7 +150,16 @@ export default function MapaLiberacaoPage() {
                 </TableRow>
               )}
               {data?.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  className="cursor-pointer"
+                  onClick={() =>
+                    setDrilldown({
+                      id: row.id,
+                      label: `${row.analystName} · ${row.clientName} · ${row.mediaChannelName}`,
+                    })
+                  }
+                >
                   <TableCell className="font-medium">{row.analystName}</TableCell>
                   <TableCell>{row.clientName}</TableCell>
                   <TableCell>{row.mediaChannelName}</TableCell>
@@ -172,6 +184,12 @@ export default function MapaLiberacaoPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <CycleDrilldownDialog
+        combinationId={drilldown?.id ?? null}
+        label={drilldown?.label ?? ""}
+        onClose={() => setDrilldown(null)}
+      />
     </div>
   );
 }

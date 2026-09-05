@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -16,5 +16,11 @@ export class CombinationsController {
   @Get()
   getMap(@Query() query: ListCombinationsQuery) {
     return this.combinationsService.getMap(query);
+  }
+
+  /** Drill-down de PIs do ciclo atual (adendo Fase 2, item 5) — somente leitura. */
+  @Get(":id/current-cycle")
+  getCurrentCycle(@Param("id", ParseUUIDPipe) id: string) {
+    return this.combinationsService.getCurrentCycleProcesses(id);
   }
 }
