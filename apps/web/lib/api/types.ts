@@ -13,6 +13,32 @@ export interface AnalystEntry extends CatalogEntry {
   registration: string | null;
 }
 
+export interface SkillSummary {
+  id: string;
+  analystId: string;
+  analystName: string;
+  clientId: string;
+  clientName: string;
+  mediaChannelId: string;
+  mediaChannelName: string;
+  evidenceCount: number;
+  firstEvidenceAt: string;
+}
+
+export interface SkillEvidence {
+  id: string;
+  piNumber: string;
+  origin: "LANCAMENTO" | "MANUAL" | "IMPORTACAO";
+  recordedByName: string;
+  createdAt: string;
+}
+
+export interface SkillImportRowError {
+  line: number;
+  column: "ANALISTA" | "CLIENTE" | "MEIO" | "PI";
+  value: string;
+}
+
 export interface GuidelineEntry {
   id: string;
   clientId: string;

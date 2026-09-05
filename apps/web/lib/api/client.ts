@@ -94,10 +94,37 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   return data as T;
 }
 
+/** Upload multipart (ex.: importação de planilha) — sem Content-Type manual, o browser define o boundary. */
+async function postFile<T>(path: string, formData: FormData, isRetry = false): Promise<T> {
+  const accessToken = useAuthStore.getState().accessToken;
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    body: formData,
+  });
+
+  if (response.status === 401 && !isRetry) {
+    refreshPromise ??= refreshSession().finally(() => {
+      refreshPromise = null;
+    });
+    const refreshed = await refreshPromise;
+    if (refreshed) return postFile<T>(path, formData, true);
+  }
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : undefined;
+  if (!response.ok) {
+    const message = (data && typeof data === "object" && "message" in data ? String(data.message) : null) ?? response.statusText;
+    throw new ApiError(response.status, message, data);
+  }
+  return data as T;
+}
+
 export const api = {
   get: <T>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: "GET" }),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "POST", body }),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "PATCH", body }),
+  postFile: <T>(path: string, formData: FormData) => postFile<T>(path, formData),
 };

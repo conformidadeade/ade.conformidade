@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ClipboardList,
+  GraduationCap,
   LayoutDashboard,
   ListChecks,
   Map as MapIcon,
@@ -25,6 +26,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/mapa", label: "Mapa de Liberação", icon: MapIcon },
+  { href: "/mapa-habilidades", label: "Mapa de Habilidades", icon: GraduationCap },
   { href: "/lancamentos", label: "Lançamento de Processos", icon: ClipboardList, roles: ["LIDERANCA", "ADMINISTRADOR"] },
   { href: "/devolucoes", label: "Devoluções", icon: Undo2, roles: ["LIDERANCA", "ADMINISTRADOR"] },
   { href: "/diretrizes", label: "Diretrizes", icon: ListChecks, roles: ["LIDERANCA", "ADMINISTRADOR"] },
