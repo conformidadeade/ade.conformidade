@@ -12,10 +12,17 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get()
-  get(@Query("month") month?: string, @Query("year") year?: string) {
-    return this.dashboardService.getIndicators(
-      month ? Number(month) : undefined,
-      year ? Number(year) : undefined,
-    );
+  get(
+    @Query("month") month?: string,
+    @Query("year") year?: string,
+    @Query("analystId") analystId?: string,
+    @Query("clientId") clientId?: string,
+    @Query("mediaChannelId") mediaChannelId?: string,
+  ) {
+    return this.dashboardService.getIndicators(month ? Number(month) : undefined, year ? Number(year) : undefined, {
+      analystId,
+      clientId,
+      mediaChannelId,
+    });
   }
 }

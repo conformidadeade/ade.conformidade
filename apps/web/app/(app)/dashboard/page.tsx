@@ -1,19 +1,41 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { DashboardIndicators } from "@reanalise-erp/types";
 import { api } from "@/lib/api/client";
+import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
 import { IndicatorCard } from "@/components/dashboard/indicator-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const monthLabel = new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+const ALL = "__all__";
 
 export default function DashboardPage() {
+  const [analystId, setAnalystId] = useState(ALL);
+  const [clientId, setClientId] = useState(ALL);
+  const [mediaChannelId, setMediaChannelId] = useState(ALL);
+
+  const { data: analysts } = useAnalysts();
+  const { data: clients } = useClients();
+  const { data: mediaChannels } = useMediaChannels();
+
+  const query = useMemo(() => {
+    const params = new URLSearchParams();
+    if (analystId !== ALL) params.set("analystId", analystId);
+    if (clientId !== ALL) params.set("clientId", clientId);
+    if (mediaChannelId !== ALL) params.set("mediaChannelId", mediaChannelId);
+    return params.toString();
+  }, [analystId, clientId, mediaChannelId]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: () => api.get<DashboardIndicators>("/dashboard"),
+    queryKey: ["dashboard", query],
+    queryFn: () => api.get<DashboardIndicators>(`/dashboard${query ? `?${query}` : ""}`),
   });
+
+  const hasFilter = analystId !== ALL || clientId !== ALL || mediaChannelId !== ALL;
 
   return (
     <div className="flex flex-col gap-6">
@@ -22,10 +44,59 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground capitalize">{monthLabel}</p>
       </div>
 
+      <Card>
+        <CardContent className="pt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Select value={analystId} onValueChange={setAnalystId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Analista" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todos os analistas</SelectItem>
+              {analysts?.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={clientId} onValueChange={setClientId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todos os clientes</SelectItem>
+              {clients?.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={mediaChannelId} onValueChange={setMediaChannelId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Meio" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todos os meios</SelectItem>
+              {mediaChannels?.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
       {isLoading || !data ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : (
         <>
+          {hasFilter && (
+            <p className="text-xs text-muted-foreground -mt-2">
+              Indicadores recalculados para o recorte selecionado — o período continua sendo o mês corrente.
+            </p>
+          )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <IndicatorCard label="Analistas ativos" value={data.totalActiveAnalysts} />
             <IndicatorCard label="Combinações em construção" value={data.combinationsInConstruction} />
