@@ -14,7 +14,13 @@ import { Label } from "@/components/ui/label";
 interface LoginResponse {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; name: string; email: string; role: "ADMINISTRADOR" | "LIDERANCA" | "ANALISTA" };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: "ADMINISTRADOR" | "LIDERANCA" | "ANALISTA";
+    analystId: string | null;
+  };
 }
 
 export default function LoginPage() {

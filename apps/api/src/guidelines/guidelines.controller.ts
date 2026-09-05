@@ -8,9 +8,17 @@ import { AuthenticatedUser } from "../auth/jwt-payload";
 import { SetGuidelineDto } from "./dto/set-guideline.dto";
 import { GuidelinesService } from "./guidelines.service";
 
+/**
+ * Restrito por inteiro a LIDERANCA/ADMINISTRADOR — inclusive leitura.
+ * Nenhuma das 3 telas do ANALISTA (Mapa, Mapa de Habilidades, Dashboard)
+ * chama este endpoint diretamente; a diretriz que aparece no Mapa é
+ * resolvida no servidor por CombinationsService (adendo "Acesso
+ * restrito", item 1 — confirmação de que Diretrizes continua bloqueado).
+ */
 @ApiTags("guidelines")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("LIDERANCA", "ADMINISTRADOR")
 @Controller("guidelines")
 export class GuidelinesController {
   constructor(private readonly guidelinesService: GuidelinesService) {}
@@ -25,7 +33,6 @@ export class GuidelinesController {
     return this.guidelinesService.history(clientId, mediaChannelId);
   }
 
-  @Roles("LIDERANCA", "ADMINISTRADOR")
   @Post()
   setGuideline(@Body() dto: SetGuidelineDto, @CurrentUser() user: AuthenticatedUser) {
     return this.guidelinesService.setGuideline(dto, user.id);

@@ -40,7 +40,10 @@ export default function CadastrosPage() {
           <CatalogManager apiPath="media-channels" entityLabel="Meio" />
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="analysts" className="mt-4">
-          <CatalogManager apiPath="analysts" entityLabel="Analista" withRegistration />
+          {/* withEdit habilitado só aqui por ora — o mesmo endpoint já existe
+              para Cliente/Meio, mas exibir "Editar" nesses dois depende de
+              confirmação (adendo "Acesso restrito", item 4). */}
+          <CatalogManager apiPath="analysts" entityLabel="Analista" withRegistration withEdit />
         </TabsPrimitive.Content>
       </TabsPrimitive.Root>
     </div>

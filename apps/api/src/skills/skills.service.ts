@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, SkillEvidenceOrigin } from "@prisma/client";
 import * as ExcelJS from "exceljs";
+import { AuthenticatedUser } from "../auth/jwt-payload";
 import { PrismaService } from "../prisma/prisma.service";
 import { ListSkillsQuery } from "./dto/list-skills.query";
 import { SkillImportRowError, SkillsImportValidationError } from "./errors";
@@ -109,9 +110,14 @@ export class SkillsService {
   }
 
   /** Histórico completo de evidências de uma habilidade — sem conceito de "ciclo" (item 6.4). */
-  async getEvidences(skillId: string): Promise<SkillEvidenceRow[]> {
+  async getEvidences(skillId: string, requestingUser: AuthenticatedUser): Promise<SkillEvidenceRow[]> {
     const skill = await this.prisma.analystSkill.findUnique({ where: { id: skillId } });
-    if (!skill) throw new NotFoundException(`Habilidade ${skillId} não encontrada.`);
+    // Mesma mensagem para "não existe" e "existe mas não é sua" (adendo
+    // "Acesso restrito", item 1) — não confirma para o ANALISTA que um ID
+    // de outra pessoa é válido.
+    if (!skill || (requestingUser.role === "ANALISTA" && skill.analystId !== requestingUser.analystId)) {
+      throw new NotFoundException(`Habilidade ${skillId} não encontrada.`);
+    }
 
     const evidences = await this.prisma.analystSkillEvidence.findMany({
       where: { skillId },

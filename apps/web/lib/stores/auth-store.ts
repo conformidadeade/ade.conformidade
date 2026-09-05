@@ -9,6 +9,8 @@ export interface SessionUser {
   name: string;
   email: string;
   role: UserRole;
+  /** Analyst vinculado ao login (adendo "Acesso restrito", item 2) — null se ainda não vinculado. */
+  analystId: string | null;
 }
 
 interface AuthState {

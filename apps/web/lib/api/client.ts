@@ -23,7 +23,7 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshSession(): Promise<boolean> {
-  const { refreshToken, setSession, clearSession, user } = useAuthStore.getState();
+  const { refreshToken, setSession, clearSession } = useAuthStore.getState();
   if (!refreshToken) {
     clearSession();
     return false;
@@ -42,10 +42,20 @@ async function refreshSession(): Promise<boolean> {
     refreshToken: string;
     user: SessionUserResponse;
   };
+  // Sempre usa o `user` que acabou de vir da API (não o cache antigo do
+  // store) — é o que faz um vínculo Analyst feito pelo admin em outra aba
+  // aparecer sem precisar de logout/login manual (adendo "Acesso
+  // restrito", item 2).
   setSession({
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
-    user: user ?? { id: data.user.id, name: data.user.name, email: data.user.email, role: data.user.role },
+    user: {
+      id: data.user.id,
+      name: data.user.name,
+      email: data.user.email,
+      role: data.user.role,
+      analystId: data.user.analystId,
+    },
   });
   return true;
 }
@@ -55,6 +65,7 @@ interface SessionUserResponse {
   name: string;
   email: string;
   role: "ADMINISTRADOR" | "LIDERANCA" | "ANALISTA";
+  analystId: string | null;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {

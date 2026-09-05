@@ -1,9 +1,12 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { Response } from "express";
+import { scopeAnalystId } from "../auth/analyst-scope";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
+import { AuthenticatedUser } from "../auth/jwt-payload";
 import { writeSimpleExcel } from "../common/excel-export";
 import { writeSimpleTablePdf } from "../common/pdf-export";
 import { CombinationsService } from "./combinations.service";
@@ -24,16 +27,21 @@ const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(
 export class CombinationsController {
   constructor(private readonly combinationsService: CombinationsService) {}
 
-  /** Mapa de Liberação de Reanálise (item 16) — leitura aberta a todos os perfis autenticados (item 21). */
+  /**
+   * Mapa de Liberação de Reanálise (item 16) — leitura aberta a todos os
+   * perfis autenticados (item 21), mas um ANALISTA só enxerga as próprias
+   * combinações: qualquer analystId recebido é ignorado e sobrescrito pelo
+   * do usuário logado (adendo "Acesso restrito", item 1) — nunca erro.
+   */
   @Get()
-  getMap(@Query() query: ListCombinationsQuery) {
-    return this.combinationsService.getMap(query);
+  getMap(@Query() query: ListCombinationsQuery, @CurrentUser() user: AuthenticatedUser) {
+    return this.combinationsService.getMap({ ...query, analystId: scopeAnalystId(user, query.analystId) });
   }
 
   /** Drill-down de PIs do ciclo atual (adendo Fase 2, item 5) — somente leitura. */
   @Get(":id/current-cycle")
-  getCurrentCycle(@Param("id", ParseUUIDPipe) id: string) {
-    return this.combinationsService.getCurrentCycleProcesses(id);
+  getCurrentCycle(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.combinationsService.getCurrentCycleProcesses(id, user);
   }
 
   /**

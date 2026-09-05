@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import { Response } from "express";
+import { scopeAnalystId } from "../auth/analyst-scope";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -38,14 +39,15 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("pt-BR");
 export class SkillsController {
   constructor(private readonly skillsService: SkillsService) {}
 
+  /** Leitura aberta a todos os perfis (item 6.4), mas um ANALISTA só vê as próprias habilidades (adendo "Acesso restrito", item 1). */
   @Get()
-  getMap(@Query() query: ListSkillsQuery) {
-    return this.skillsService.getMap(query);
+  getMap(@Query() query: ListSkillsQuery, @CurrentUser() user: AuthenticatedUser) {
+    return this.skillsService.getMap({ ...query, analystId: scopeAnalystId(user, query.analystId) });
   }
 
   @Get(":id/evidences")
-  getEvidences(@Param("id", ParseUUIDPipe) id: string) {
-    return this.skillsService.getEvidences(id);
+  getEvidences(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.skillsService.getEvidences(id, user);
   }
 
   @Roles("LIDERANCA", "ADMINISTRADOR")

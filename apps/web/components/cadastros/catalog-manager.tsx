@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { ApiError, api } from "@/lib/api/client";
 import type { AnalystEntry, CatalogEntry } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -26,9 +26,16 @@ interface CatalogManagerProps {
   apiPath: "clients" | "media-channels" | "analysts";
   entityLabel: string;
   withRegistration?: boolean;
+  /**
+   * Exibe o botão "Editar" (adendo "Acesso restrito", item 4). O endpoint
+   * PATCH já existe para os três cadastros, mas por ora só é oferecido na
+   * aba de Analistas — habilitar para Clientes/Meios depende de
+   * confirmação (ver mensagem de fechamento do adendo).
+   */
+  withEdit?: boolean;
 }
 
-export function CatalogManager({ apiPath, entityLabel, withRegistration }: CatalogManagerProps) {
+export function CatalogManager({ apiPath, entityLabel, withRegistration, withEdit }: CatalogManagerProps) {
   const queryClient = useQueryClient();
   const queryKey = [apiPath, "includeInactive"];
   const { data, isLoading } = useQuery({
@@ -39,6 +46,10 @@ export function CatalogManager({ apiPath, entityLabel, withRegistration }: Catal
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", notes: "", registration: "" });
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const [editTarget, setEditTarget] = useState<Entry | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", notes: "", registration: "" });
+  const [editError, setEditError] = useState<string | null>(null);
 
   const [inactivateTarget, setInactivateTarget] = useState<Entry | null>(null);
   const [inactivateReason, setInactivateReason] = useState("");
@@ -63,6 +74,27 @@ export function CatalogManager({ apiPath, entityLabel, withRegistration }: Catal
     },
     onError: (err) => setCreateError(err instanceof ApiError ? err.message : "Erro ao criar cadastro."),
   });
+
+  const editMutation = useMutation({
+    mutationFn: () =>
+      api.patch<Entry>(`/${apiPath}/${editTarget!.id}`, {
+        name: editForm.name,
+        notes: editForm.notes || undefined,
+        ...(withRegistration ? { registration: editForm.registration || undefined } : {}),
+      }),
+    onSuccess: () => {
+      invalidateAll();
+      setEditTarget(null);
+      setEditError(null);
+    },
+    onError: (err) => setEditError(err instanceof ApiError ? err.message : "Erro ao salvar."),
+  });
+
+  function openEdit(entry: Entry) {
+    setEditTarget(entry);
+    setEditForm({ name: entry.name, notes: entry.notes ?? "", registration: entry.registration ?? "" });
+    setEditError(null);
+  }
 
   const inactivateMutation = useMutation({
     mutationFn: () =>
@@ -165,20 +197,79 @@ export function CatalogManager({ apiPath, entityLabel, withRegistration }: Catal
                 <Badge variant={entry.active ? "success" : "outline"}>{entry.active ? "Ativo" : "Inativo"}</Badge>
               </TableCell>
               <TableCell className="text-right">
-                {entry.active ? (
-                  <Button variant="outline" size="sm" onClick={() => setInactivateTarget(entry)}>
-                    Inativar
-                  </Button>
-                ) : (
-                  <Button variant="outline" size="sm" onClick={() => activateMutation.mutate(entry.id)}>
-                    Reativar
-                  </Button>
-                )}
+                <div className="flex justify-end gap-2">
+                  {withEdit && (
+                    <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
+                      <Pencil className="size-4" />
+                      Editar
+                    </Button>
+                  )}
+                  {entry.active ? (
+                    <Button variant="outline" size="sm" onClick={() => setInactivateTarget(entry)}>
+                      Inativar
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => activateMutation.mutate(entry.id)}>
+                      Reativar
+                    </Button>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+
+      <Dialog open={!!editTarget} onOpenChange={(open) => !open && setEditTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar {editTarget?.name}</DialogTitle>
+            <DialogDescription>Ativar/inativar tem seu próprio botão e exige motivo à parte.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              editMutation.mutate();
+            }}
+          >
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-name">Nome</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                required
+                autoFocus
+              />
+            </div>
+            {withRegistration && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-registration">Matrícula / sigla</Label>
+                <Input
+                  id="edit-registration"
+                  value={editForm.registration}
+                  onChange={(e) => setEditForm((f) => ({ ...f, registration: e.target.value }))}
+                />
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-notes">Observações</Label>
+              <Input
+                id="edit-notes"
+                value={editForm.notes}
+                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+            {editError && <p className="text-sm text-destructive">{editError}</p>}
+            <DialogFooter>
+              <Button type="submit" disabled={!editForm.name || editMutation.isPending}>
+                Salvar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!inactivateTarget} onOpenChange={(open) => !open && setInactivateTarget(null)}>
         <DialogContent>

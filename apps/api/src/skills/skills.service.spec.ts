@@ -1,4 +1,6 @@
+import { NotFoundException } from "@nestjs/common";
 import * as ExcelJS from "exceljs";
+import { AuthenticatedUser } from "../auth/jwt-payload";
 import { SkillsImportValidationError } from "./errors";
 import { SkillsService } from "./skills.service";
 
@@ -122,5 +124,35 @@ describe("SkillsService.importFromWorkbook (adendo Fase 2, item 6.3)", () => {
     const result = await service.importFromWorkbook(buffer, "user-1");
     expect(result.rowsImported).toBe(1);
     expect(prisma.skills).toHaveLength(1);
+  });
+});
+
+describe("SkillsService.getEvidences — isolamento por ANALISTA (adendo Acesso restrito, item 1)", () => {
+  function buildEvidencesFake(skill: { id: string; analystId: string } | null) {
+    return {
+      analystSkill: { findUnique: jest.fn(async () => skill) },
+      analystSkillEvidence: { findMany: jest.fn(async () => []) },
+    };
+  }
+
+  test("ANALISTA acessando a própria habilidade enxerga as evidências normalmente", async () => {
+    const prisma = buildEvidencesFake({ id: "skill-1", analystId: "analyst-a" });
+    const service = new SkillsService(prisma as never);
+    const analista: AuthenticatedUser = { id: "u-analista", role: "ANALISTA", analystId: "analyst-a" };
+    await expect(service.getEvidences("skill-1", analista)).resolves.toEqual([]);
+  });
+
+  test("ANALISTA tentando acessar a habilidade de outro analista via ID manipulado recebe NotFoundException", async () => {
+    const prisma = buildEvidencesFake({ id: "skill-1", analystId: "analyst-b" });
+    const service = new SkillsService(prisma as never);
+    const analista: AuthenticatedUser = { id: "u-analista", role: "ANALISTA", analystId: "analyst-a" };
+    await expect(service.getEvidences("skill-1", analista)).rejects.toThrow(NotFoundException);
+  });
+
+  test("LIDERANCA acessa qualquer habilidade normalmente", async () => {
+    const prisma = buildEvidencesFake({ id: "skill-1", analystId: "analyst-b" });
+    const service = new SkillsService(prisma as never);
+    const lideranca: AuthenticatedUser = { id: "u-lider", role: "LIDERANCA", analystId: null };
+    await expect(service.getEvidences("skill-1", lideranca)).resolves.toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import { ApiError, api } from "@/lib/api/client";
 import type { SkillImportRowError, SkillSummary } from "@/lib/api/types";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { AnalystNotLinked } from "@/components/analyst-not-linked";
 import { ExportButtons } from "@/components/export-buttons";
 import { SkillEvidencesDialog } from "@/components/skills/skill-evidences-dialog";
 import { Button } from "@/components/ui/button";
@@ -24,13 +25,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 const ALL = "__all__";
 
 export default function MapaHabilidadesPage() {
   const queryClient = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
+  const ownAnalystId = useAuthStore((s) => s.user?.analystId);
   const canWrite = role === "LIDERANCA" || role === "ADMINISTRADOR";
+  const isAnalista = role === "ANALISTA";
 
   const [analystId, setAnalystId] = useState(ALL);
   const [clientId, setClientId] = useState(ALL);
@@ -43,15 +47,18 @@ export default function MapaHabilidadesPage() {
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
-    if (analystId !== ALL) params.set("analystId", analystId);
+    // Para ANALISTA o backend ignora e sobrescreve isso de qualquer forma
+    // (adendo "Acesso restrito", item 1) — nem enviamos o parâmetro.
+    if (!isAnalista && analystId !== ALL) params.set("analystId", analystId);
     if (clientId !== ALL) params.set("clientId", clientId);
     if (mediaChannelId !== ALL) params.set("mediaChannelId", mediaChannelId);
     return params.toString();
-  }, [analystId, clientId, mediaChannelId]);
+  }, [analystId, clientId, mediaChannelId, isAnalista]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["skills", query],
     queryFn: () => api.get<SkillSummary[]>(`/skills?${query}`),
+    enabled: !isAnalista || !!ownAnalystId,
   });
 
   return (
@@ -60,8 +67,9 @@ export default function MapaHabilidadesPage() {
         <div>
           <h1 className="text-xl font-semibold">Mapa de Habilidades</h1>
           <p className="text-sm text-muted-foreground">
-            Quais combinações Cliente + Meio cada analista já demonstrou saber operar — independente do status
-            atual de liberação. Clique numa linha para ver as evidências.
+            {isAnalista
+              ? "Suas combinações Cliente + Meio já demonstradas. Clique numa linha para ver as evidências."
+              : "Quais combinações Cliente + Meio cada analista já demonstrou saber operar — independente do status atual de liberação. Clique numa linha para ver as evidências."}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
@@ -75,24 +83,30 @@ export default function MapaHabilidadesPage() {
         </div>
       </div>
 
+      {isAnalista && !ownAnalystId ? (
+        <AnalystNotLinked />
+      ) : (
+        <>
       <Card>
         <CardHeader>
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Select value={analystId} onValueChange={setAnalystId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Analista" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os analistas</SelectItem>
-              {analysts?.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <CardContent className={cn("grid grid-cols-1 gap-3", isAnalista ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
+          {!isAnalista && (
+            <Select value={analystId} onValueChange={setAnalystId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Analista" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os analistas</SelectItem>
+                {analysts?.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={clientId} onValueChange={setClientId}>
             <SelectTrigger>
               <SelectValue placeholder="Cliente" />
@@ -179,6 +193,8 @@ export default function MapaHabilidadesPage() {
         label={selectedSkill?.label ?? ""}
         onClose={() => setSelectedSkill(null)}
       />
+        </>
+      )}
     </div>
   );
 }

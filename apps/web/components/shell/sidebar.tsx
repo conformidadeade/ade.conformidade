@@ -3,37 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ClipboardList,
-  GraduationCap,
-  LayoutDashboard,
-  ListChecks,
-  Map as MapIcon,
-  Settings2,
-  Undo2,
-  Users,
-} from "lucide-react";
-import type { UserRole } from "@reanalise-erp/types";
+import { NAV_ITEMS } from "@/lib/nav-items";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { cn } from "@/lib/utils";
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  roles?: UserRole[]; // undefined = todos os perfis autenticados
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/mapa", label: "Mapa de Liberação", icon: MapIcon },
-  { href: "/mapa-habilidades", label: "Mapa de Habilidades", icon: GraduationCap },
-  { href: "/lancamentos", label: "Lançamento de Processos", icon: ClipboardList, roles: ["LIDERANCA", "ADMINISTRADOR"] },
-  { href: "/devolucoes", label: "Devoluções", icon: Undo2, roles: ["LIDERANCA", "ADMINISTRADOR"] },
-  { href: "/diretrizes", label: "Diretrizes", icon: ListChecks, roles: ["LIDERANCA", "ADMINISTRADOR"] },
-  { href: "/cadastros", label: "Cadastros", icon: Settings2, roles: ["LIDERANCA", "ADMINISTRADOR"] },
-  { href: "/usuarios", label: "Usuários", icon: Users, roles: ["ADMINISTRADOR"] },
-];
 
 export function Sidebar() {
   const pathname = usePathname();

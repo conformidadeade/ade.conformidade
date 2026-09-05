@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { CombinationSummary } from "@reanalise-erp/types";
+import { AuthenticatedUser } from "../auth/jwt-payload";
 import { PrismaService } from "../prisma/prisma.service";
 import { ListCombinationsQuery } from "./dto/list-combinations.query";
 
@@ -90,14 +91,20 @@ export class CombinationsService {
    * engine), então não entram nesta lista — é o que garante que a
    * contagem sempre bate com o número exibido no Mapa.
    */
-  async getCurrentCycleProcesses(combinationId: string): Promise<{
+  async getCurrentCycleProcesses(
+    combinationId: string,
+    requestingUser: AuthenticatedUser,
+  ): Promise<{
     combinationId: string;
     status: string;
     constructionCount: number;
     processes: CurrentCycleProcess[];
   }> {
     const combination = await this.prisma.analystClientMedia.findUnique({ where: { id: combinationId } });
-    if (!combination) {
+    // Mesma mensagem para "não existe" e "existe mas não é sua" (adendo
+    // "Acesso restrito", item 1) — não confirma para o ANALISTA que um ID
+    // de outra pessoa é válido.
+    if (!combination || (requestingUser.role === "ANALISTA" && combination.analystId !== requestingUser.analystId)) {
       throw new NotFoundException(`Combinação ${combinationId} não encontrada.`);
     }
 

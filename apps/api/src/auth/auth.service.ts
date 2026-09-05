@@ -8,7 +8,7 @@ import { PasswordService } from "./password.service";
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; name: string; email: string; role: string };
+  user: { id: string; name: string; email: string; role: string; analystId: string | null };
 }
 
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias — mantido em sincronia com JWT_REFRESH_TTL
@@ -40,7 +40,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, analystId: user.analystId },
     };
   }
 
@@ -66,7 +66,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken: newRefreshToken,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, analystId: user.analystId },
     };
   }
 

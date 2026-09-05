@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { CombinationStatus, CombinationSummary } from "@reanalise-erp/types";
 import { api } from "@/lib/api/client";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { AnalystNotLinked } from "@/components/analyst-not-linked";
 import { CycleDrilldownDialog } from "@/components/combinations/cycle-drilldown-dialog";
 import { ExportButtons } from "@/components/export-buttons";
 import { StatusBadge } from "@/components/status-badge";
@@ -24,6 +26,10 @@ const QUICK_FILTERS: { label: string; status?: CombinationStatus }[] = [
 const ALL = "__all__";
 
 export default function MapaLiberacaoPage() {
+  const role = useAuthStore((s) => s.user?.role);
+  const ownAnalystId = useAuthStore((s) => s.user?.analystId);
+  const isAnalista = role === "ANALISTA";
+
   const [clientId, setClientId] = useState<string>(ALL);
   const [mediaChannelId, setMediaChannelId] = useState<string>(ALL);
   const [analystId, setAnalystId] = useState<string>(ALL);
@@ -38,14 +44,17 @@ export default function MapaLiberacaoPage() {
     const params = new URLSearchParams();
     if (clientId !== ALL) params.set("clientId", clientId);
     if (mediaChannelId !== ALL) params.set("mediaChannelId", mediaChannelId);
-    if (analystId !== ALL) params.set("analystId", analystId);
+    // Para ANALISTA o backend ignora e sobrescreve isso de qualquer forma
+    // (adendo "Acesso restrito", item 1) — nem enviamos o parâmetro.
+    if (!isAnalista && analystId !== ALL) params.set("analystId", analystId);
     if (status) params.set("status", status);
     return params.toString();
-  }, [clientId, mediaChannelId, analystId, status]);
+  }, [clientId, mediaChannelId, analystId, status, isAnalista]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["combinations", query],
     queryFn: () => api.get<CombinationSummary[]>(`/combinations?${query}`),
+    enabled: !isAnalista || !!ownAnalystId,
   });
 
   return (
@@ -54,13 +63,18 @@ export default function MapaLiberacaoPage() {
         <div>
           <h1 className="text-xl font-semibold">Mapa de Liberação de Reanálise</h1>
           <p className="text-sm text-muted-foreground">
-            Situação de todas as combinações Analista + Cliente + Meio. Clique numa linha para ver os PIs do
-            ciclo atual.
+            {isAnalista
+              ? "Suas combinações Cliente + Meio. Clique numa linha para ver os PIs do ciclo atual."
+              : "Situação de todas as combinações Analista + Cliente + Meio. Clique numa linha para ver os PIs do ciclo atual."}
           </p>
         </div>
         <ExportButtons basePath="/combinations" baseFilename="mapa-liberacao" />
       </div>
 
+      {isAnalista && !ownAnalystId ? (
+        <AnalystNotLinked />
+      ) : (
+        <>
       <div className="flex flex-wrap items-center gap-2">
         {QUICK_FILTERS.map((f) => (
           <Button
@@ -78,7 +92,7 @@ export default function MapaLiberacaoPage() {
         <CardHeader>
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <CardContent className={cn("grid grid-cols-1 gap-3", isAnalista ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
           <Select value={clientId} onValueChange={setClientId}>
             <SelectTrigger>
               <SelectValue placeholder="Cliente" />
@@ -107,19 +121,21 @@ export default function MapaLiberacaoPage() {
             </SelectContent>
           </Select>
 
-          <Select value={analystId} onValueChange={setAnalystId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Analista" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os analistas</SelectItem>
-              {analysts?.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!isAnalista && (
+            <Select value={analystId} onValueChange={setAnalystId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Analista" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os analistas</SelectItem>
+                {analysts?.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardContent>
       </Card>
 
@@ -194,6 +210,8 @@ export default function MapaLiberacaoPage() {
         label={drilldown?.label ?? ""}
         onClose={() => setDrilldown(null)}
       />
+        </>
+      )}
     </div>
   );
 }

@@ -1,5 +1,8 @@
 import { NotFoundException } from "@nestjs/common";
+import { AuthenticatedUser } from "../auth/jwt-payload";
 import { CombinationsService } from "./combinations.service";
+
+const LIDERANCA_USER: AuthenticatedUser = { id: "u-lider", role: "LIDERANCA", analystId: null };
 
 interface FakeProcess {
   id: string;
@@ -18,7 +21,7 @@ interface FakeEvent {
 }
 
 function buildPrismaFake(data: {
-  combination: { id: string; status: string; constructionCount: number } | null;
+  combination: { id: string; status: string; constructionCount: number; analystId?: string } | null;
   events: FakeEvent[];
   processes: FakeProcess[];
 }) {
@@ -63,7 +66,7 @@ describe("CombinationsService.getCurrentCycleProcesses (adendo Fase 2, item 5)",
   test("combinação inexistente lança NotFoundException", async () => {
     const prisma = buildPrismaFake({ combination: null, events: [], processes: [] });
     const service = new CombinationsService(prisma as never);
-    await expect(service.getCurrentCycleProcesses("nope")).rejects.toThrow(NotFoundException);
+    await expect(service.getCurrentCycleProcesses("nope", LIDERANCA_USER)).rejects.toThrow(NotFoundException);
   });
 
   test("3 devoluções no histórico, mas só 1 reset recente → lista mostra só o ciclo atual e bate com o progresso", async () => {
@@ -83,7 +86,7 @@ describe("CombinationsService.getCurrentCycleProcesses (adendo Fase 2, item 5)",
       ],
     });
     const service = new CombinationsService(prisma as never);
-    const result = await service.getCurrentCycleProcesses("combo1");
+    const result = await service.getCurrentCycleProcesses("combo1", LIDERANCA_USER);
 
     expect(result.constructionCount).toBe(2);
     expect(result.processes).toHaveLength(2);
@@ -97,7 +100,7 @@ describe("CombinationsService.getCurrentCycleProcesses (adendo Fase 2, item 5)",
       processes: [process("p1", "2026-01-01"), process("p2", "2026-01-02"), process("p3", "2026-01-03")],
     });
     const service = new CombinationsService(prisma as never);
-    const result = await service.getCurrentCycleProcesses("combo1");
+    const result = await service.getCurrentCycleProcesses("combo1", LIDERANCA_USER);
     expect(result.processes.map((p) => p.piNumber)).toEqual(["PI-p1", "PI-p2", "PI-p3"]);
   });
 
@@ -115,8 +118,45 @@ describe("CombinationsService.getCurrentCycleProcesses (adendo Fase 2, item 5)",
       ],
     });
     const service = new CombinationsService(prisma as never);
-    const result = await service.getCurrentCycleProcesses("combo1");
+    const result = await service.getCurrentCycleProcesses("combo1", LIDERANCA_USER);
     expect(result.processes).toHaveLength(5);
     expect(result.processes.map((p) => p.piNumber)).not.toContain("PI-p6");
+  });
+});
+
+describe("CombinationsService.getCurrentCycleProcesses — isolamento por ANALISTA (adendo Acesso restrito, item 1)", () => {
+  const at = (d: string) => new Date(d);
+
+  test("ANALISTA acessando a própria combinação enxerga o drill-down normalmente", async () => {
+    const prisma = buildPrismaFake({
+      combination: { id: "combo1", status: "EM_CONSTRUCAO", constructionCount: 1, analystId: "analyst-a" },
+      events: [],
+      processes: [
+        {
+          id: "p1",
+          combinationId: "combo1",
+          piNumber: "PI-1",
+          result: "CORRETO",
+          analysisDate: at("2026-01-01"),
+          createdAt: at("2026-01-01"),
+          recordedByName: "Fulano",
+        },
+      ],
+    });
+    const service = new CombinationsService(prisma as never);
+    const analista: AuthenticatedUser = { id: "u-analista", role: "ANALISTA", analystId: "analyst-a" };
+    const result = await service.getCurrentCycleProcesses("combo1", analista);
+    expect(result.processes).toHaveLength(1);
+  });
+
+  test("ANALISTA tentando acessar a combinação de outro analista via ID manipulado recebe NotFoundException", async () => {
+    const prisma = buildPrismaFake({
+      combination: { id: "combo1", status: "EM_CONSTRUCAO", constructionCount: 1, analystId: "analyst-b" },
+      events: [],
+      processes: [],
+    });
+    const service = new CombinationsService(prisma as never);
+    const analista: AuthenticatedUser = { id: "u-analista", role: "ANALISTA", analystId: "analyst-a" };
+    await expect(service.getCurrentCycleProcesses("combo1", analista)).rejects.toThrow(NotFoundException);
   });
 });

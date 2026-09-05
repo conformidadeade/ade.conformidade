@@ -1,21 +1,35 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
+import { canAccessRoute } from "@/lib/nav-items";
 import { useAuthStore } from "@/lib/stores/auth-store";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const role = useAuthStore((s) => s.user?.role);
 
   useEffect(() => {
-    if (hasHydrated && !accessToken) router.replace("/login");
-  }, [hasHydrated, accessToken, router]);
+    if (!hasHydrated) return;
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+    // Acesso direto por URL a uma tela fora do papel do usuário (ex.: um
+    // ANALISTA digitando /usuarios) — redireciona para o Dashboard em vez
+    // de mostrar erro cru (adendo "Acesso restrito", item 3). A garantia
+    // de verdade é no backend (RolesGuard); isto é só navegação.
+    if (!canAccessRoute(pathname, role)) {
+      router.replace("/dashboard");
+    }
+  }, [hasHydrated, accessToken, pathname, role, router]);
 
-  if (!hasHydrated || !accessToken) return null;
+  if (!hasHydrated || !accessToken || !canAccessRoute(pathname, role)) return null;
 
   return (
     <div className="flex h-screen w-full overflow-hidden">

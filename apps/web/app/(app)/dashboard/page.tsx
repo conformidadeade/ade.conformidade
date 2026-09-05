@@ -6,14 +6,21 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import type { DashboardIndicators } from "@reanalise-erp/types";
 import { api } from "@/lib/api/client";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { AnalystNotLinked } from "@/components/analyst-not-linked";
 import { IndicatorCard } from "@/components/dashboard/indicator-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const monthLabel = new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 const ALL = "__all__";
 
 export default function DashboardPage() {
+  const role = useAuthStore((s) => s.user?.role);
+  const ownAnalystId = useAuthStore((s) => s.user?.analystId);
+  const isAnalista = role === "ANALISTA";
+
   const [analystId, setAnalystId] = useState(ALL);
   const [clientId, setClientId] = useState(ALL);
   const [mediaChannelId, setMediaChannelId] = useState(ALL);
@@ -24,18 +31,33 @@ export default function DashboardPage() {
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
-    if (analystId !== ALL) params.set("analystId", analystId);
+    // Para ANALISTA o backend ignora e sobrescreve isso de qualquer forma
+    // (adendo "Acesso restrito", item 1) — nem enviamos o parâmetro.
+    if (!isAnalista && analystId !== ALL) params.set("analystId", analystId);
     if (clientId !== ALL) params.set("clientId", clientId);
     if (mediaChannelId !== ALL) params.set("mediaChannelId", mediaChannelId);
     return params.toString();
-  }, [analystId, clientId, mediaChannelId]);
+  }, [analystId, clientId, mediaChannelId, isAnalista]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", query],
     queryFn: () => api.get<DashboardIndicators>(`/dashboard${query ? `?${query}` : ""}`),
+    enabled: !isAnalista || !!ownAnalystId,
   });
 
-  const hasFilter = analystId !== ALL || clientId !== ALL || mediaChannelId !== ALL;
+  const hasFilter = (!isAnalista && analystId !== ALL) || clientId !== ALL || mediaChannelId !== ALL;
+
+  if (isAnalista && !ownAnalystId) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-xl font-semibold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground capitalize">{monthLabel}</p>
+        </div>
+        <AnalystNotLinked />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -45,20 +67,22 @@ export default function DashboardPage() {
       </div>
 
       <Card>
-        <CardContent className="pt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Select value={analystId} onValueChange={setAnalystId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Analista" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os analistas</SelectItem>
-              {analysts?.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <CardContent className={cn("pt-5 grid grid-cols-1 gap-3", isAnalista ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
+          {!isAnalista && (
+            <Select value={analystId} onValueChange={setAnalystId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Analista" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os analistas</SelectItem>
+                {analysts?.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={clientId} onValueChange={setClientId}>
             <SelectTrigger>
               <SelectValue placeholder="Cliente" />
@@ -98,23 +122,40 @@ export default function DashboardPage() {
             </p>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <IndicatorCard label="Analistas ativos" value={data.totalActiveAnalysts} />
-            <IndicatorCard label="Combinações em construção" value={data.combinationsInConstruction} />
-            <IndicatorCard label="Combinações liberadas" value={data.combinationsReleased} />
-            <IndicatorCard label="Liberações no mês" value={data.releasesThisMonth} />
-            <IndicatorCard label="Retornos no mês" value={data.returnsToReanalysisThisMonth} />
-            <IndicatorCard label="Devoluções no mês" value={data.reportedReturnsThisMonth} />
+            {/* "Analistas ativos" é um número da empresa toda — não recalculado
+               para o ANALISTA (ver observação sobre este indicador). */}
+            {!isAnalista && <IndicatorCard label="Analistas ativos" value={data.totalActiveAnalysts} />}
+            <IndicatorCard
+              label={isAnalista ? "Minhas combinações em construção" : "Combinações em construção"}
+              value={data.combinationsInConstruction}
+            />
+            <IndicatorCard
+              label={isAnalista ? "Minhas combinações liberadas" : "Combinações liberadas"}
+              value={data.combinationsReleased}
+            />
+            <IndicatorCard label={isAnalista ? "Minhas liberações no mês" : "Liberações no mês"} value={data.releasesThisMonth} />
+            <IndicatorCard label={isAnalista ? "Meus retornos no mês" : "Retornos no mês"} value={data.returnsToReanalysisThisMonth} />
+            <IndicatorCard
+              label={isAnalista ? "Minhas devoluções no mês" : "Devoluções no mês"}
+              value={data.reportedReturnsThisMonth}
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ChartCard title="Liberações por cliente" data={data.releasesByClient.map((r) => ({ name: r.clientName, value: r.count }))} />
-            <ChartCard title="Devoluções por cliente" data={data.returnsByClient.map((r) => ({ name: r.clientName, value: r.count }))} />
             <ChartCard
-              title="Liberações por meio"
+              title={isAnalista ? "Minhas liberações por cliente" : "Liberações por cliente"}
+              data={data.releasesByClient.map((r) => ({ name: r.clientName, value: r.count }))}
+            />
+            <ChartCard
+              title={isAnalista ? "Minhas devoluções por cliente" : "Devoluções por cliente"}
+              data={data.returnsByClient.map((r) => ({ name: r.clientName, value: r.count }))}
+            />
+            <ChartCard
+              title={isAnalista ? "Minhas liberações por meio" : "Liberações por meio"}
               data={data.releasesByMediaChannel.map((r) => ({ name: r.mediaChannelName, value: r.count }))}
             />
             <ChartCard
-              title="Devoluções por meio"
+              title={isAnalista ? "Minhas devoluções por meio" : "Devoluções por meio"}
               data={data.returnsByMediaChannel.map((r) => ({ name: r.mediaChannelName, value: r.count }))}
             />
           </div>
