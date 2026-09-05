@@ -234,6 +234,15 @@ model AnalyzedProcess {
 model ReanalysisReturn {
   id            String   @id @default(uuid())
   combinationId String
+  /// Nº do PI devolvido — texto livre e obrigatório (adendo Fase 2, item 1).
+  /// Combinações já LIBERADAS recebem devolução de processos que nunca
+  /// passaram pela reanálise (não existe AnalyzedProcess correspondente na
+  /// maioria dos casos) — por isso este campo nunca pode depender de um
+  /// processo pré-existente para ser aceito.
+  piNumber      String
+  /// Vínculo automático e silencioso: preenchido pelo serviço quando existe
+  /// um AnalyzedProcess com o mesmo piNumber nesta combinação; null quando
+  /// não encontrado. Nunca exigido/selecionado pelo usuário.
   processId     String?
   reason        String
   observation   String?
@@ -257,6 +266,7 @@ model ReanalysisReturn {
 
   @@index([combinationId, monthKey])
   @@index([combinationId, contextState, monthKey])
+  @@index([combinationId, piNumber])
   @@map("reanalysis_returns")
 }
 

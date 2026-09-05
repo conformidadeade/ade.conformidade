@@ -28,7 +28,8 @@ export interface RegisterReturnInput {
   analystId: string;
   clientId: string;
   mediaChannelId: string;
-  processId?: string;
+  /** Nº do PI devolvido — texto livre, sempre aceito (adendo Fase 2, item 1). */
+  piNumber: string;
   reason: string;
   observation?: string;
   occurredAt: Date;
@@ -127,9 +128,19 @@ export class ReleaseService {
         reason: input.reason,
       });
 
+      // Vínculo automático e silencioso (item 1): a maioria das devoluções
+      // de combinações já LIBERADAS não tem processo correspondente no
+      // sistema (o PI nunca passou pela reanálise) — não encontrar não é
+      // erro, só resulta em processId=null.
+      const matchingProcess = await repo.findProcessByPiNumber({
+        combinationId: combination.id,
+        piNumber: input.piNumber,
+      });
+
       await repo.createReturn({
         combinationId: combination.id,
-        processId: input.processId,
+        piNumber: input.piNumber,
+        processId: matchingProcess?.id,
         reason: input.reason,
         observation: input.observation,
         occurredAt: input.occurredAt,

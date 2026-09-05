@@ -79,6 +79,17 @@ export class InMemoryReleaseRepository implements ReleaseRepositoryPort, Release
     return found ? { id: found.id } : null;
   }
 
+  async findProcessByPiNumber(input: { combinationId: string; piNumber: string }): Promise<{ id: string } | null> {
+    // Mais recente primeiro, espelhando orderBy createdAt desc do Prisma.
+    for (let i = this.processes.length - 1; i >= 0; i--) {
+      const p = this.processes[i]!;
+      if (p.combinationId === input.combinationId && p.piNumber === input.piNumber) {
+        return { id: p.id };
+      }
+    }
+    return null;
+  }
+
   async createProcess(input: CreateProcessInput): Promise<{ id: string }> {
     const id = randomUUID();
     this.processes.push({ ...input, id });

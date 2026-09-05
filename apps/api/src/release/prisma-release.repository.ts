@@ -126,6 +126,15 @@ class TxReleaseRepository implements ReleaseRepositoryPort {
     return found;
   }
 
+  async findProcessByPiNumber(input: { combinationId: string; piNumber: string }): Promise<{ id: string } | null> {
+    const found = await this.tx.analyzedProcess.findFirst({
+      where: { combinationId: input.combinationId, piNumber: input.piNumber },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    return found;
+  }
+
   async createProcess(input: CreateProcessInput): Promise<{ id: string }> {
     const created = await this.tx.analyzedProcess.create({
       data: {
@@ -145,6 +154,7 @@ class TxReleaseRepository implements ReleaseRepositoryPort {
     const created = await this.tx.reanalysisReturn.create({
       data: {
         combinationId: input.combinationId,
+        piNumber: input.piNumber,
         processId: input.processId,
         reason: input.reason,
         observation: input.observation,

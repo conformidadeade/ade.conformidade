@@ -32,6 +32,7 @@ export default function DevolucoesPage() {
     analystId: "",
     clientId: "",
     mediaChannelId: "",
+    piNumber: "",
     reason: "",
     observation: "",
     occurredAt: todayIso(),
@@ -41,11 +42,12 @@ export default function DevolucoesPage() {
     mutationFn: () => api.post<RegisterReturnResult>("/release/returns", form),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["combinations"] });
-      setForm((f) => ({ ...f, reason: "", observation: "" }));
+      setForm((f) => ({ ...f, piNumber: "", reason: "", observation: "" }));
     },
   });
 
-  const canSubmit = form.analystId && form.clientId && form.mediaChannelId && form.reason && form.occurredAt;
+  const canSubmit =
+    form.analystId && form.clientId && form.mediaChannelId && form.piNumber && form.reason && form.occurredAt;
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -53,7 +55,9 @@ export default function DevolucoesPage() {
         <h1 className="text-xl font-semibold">Devoluções</h1>
         <p className="text-sm text-muted-foreground">
           O sistema identifica automaticamente a situação atual da combinação e aplica a regra correspondente —
-          zera a construção vigente, ou soma na regra de retorno mensal se já estiver liberada.
+          zera a construção vigente, ou soma na regra de retorno mensal se já estiver liberada. O nº do PI é
+          sempre aceito, mesmo quando o processo nunca passou pela reanálise (caso comum para combinações já
+          liberadas) — o vínculo com um lançamento existente, quando houver, é feito automaticamente.
         </p>
       </div>
 
@@ -117,7 +121,17 @@ export default function DevolucoesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="piNumber">Nº do PI</Label>
+                <Input
+                  id="piNumber"
+                  value={form.piNumber}
+                  onChange={(e) => setForm((f) => ({ ...f, piNumber: e.target.value }))}
+                  placeholder="Sempre aceito, mesmo sem processo lançado"
+                  required
+                />
+              </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="occurredAt">Data</Label>
                 <Input

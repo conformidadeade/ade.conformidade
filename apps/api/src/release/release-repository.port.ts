@@ -25,6 +25,9 @@ export interface CreateProcessInput {
 
 export interface CreateReturnInput {
   combinationId: string;
+  /** Nº do PI devolvido — texto livre, sempre aceito (adendo Fase 2, item 1). */
+  piNumber: string;
+  /** Vínculo automático e silencioso — resolvido pelo service via findProcessByPiNumber, nunca informado pelo usuário. */
   processId?: string;
   reason: string;
   observation?: string;
@@ -59,6 +62,13 @@ export interface ReleaseRepositoryPort {
     piNumber: string;
     analysisDate: Date;
   }): Promise<{ id: string } | null>;
+  /**
+   * Vínculo automático da devolução (item 1): busca o AnalyzedProcess mais
+   * recente com o mesmo PI nesta combinação. Não encontrar é o caminho
+   * normal para combinações já LIBERADAS (o processo nunca passou pela
+   * reanálise) — não é um erro.
+   */
+  findProcessByPiNumber(input: { combinationId: string; piNumber: string }): Promise<{ id: string } | null>;
   createProcess(input: CreateProcessInput): Promise<{ id: string }>;
   createReturn(input: CreateReturnInput): Promise<{ id: string }>;
   saveStateAndEvents(input: SaveStateAndEventsInput): Promise<void>;
