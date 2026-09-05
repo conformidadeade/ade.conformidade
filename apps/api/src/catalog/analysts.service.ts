@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { AuditLogService } from "../common/audit-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateAnalystDto, InactivateDto, UpdateAnalystDto } from "./dto/catalog-entry.dto";
@@ -12,9 +13,16 @@ export class AnalystsService {
   ) {}
 
   async create(dto: CreateAnalystDto, userId: string) {
-    const analyst = await this.prisma.analyst.create({ data: dto });
-    await this.auditLog.record({ userId, entityType: "Analyst", entityId: analyst.id, action: "CREATE", after: analyst });
-    return analyst;
+    try {
+      const analyst = await this.prisma.analyst.create({ data: dto });
+      await this.auditLog.record({ userId, entityType: "Analyst", entityId: analyst.id, action: "CREATE", after: analyst });
+      return analyst;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("Já existe um analista com este nome.");
+      }
+      throw error;
+    }
   }
 
   list(includeInactive = false) {

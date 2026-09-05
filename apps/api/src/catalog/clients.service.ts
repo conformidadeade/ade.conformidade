@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { AuditLogService } from "../common/audit-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateCatalogEntryDto, InactivateDto, UpdateCatalogEntryDto } from "./dto/catalog-entry.dto";
@@ -12,9 +13,16 @@ export class ClientsService {
   ) {}
 
   async create(dto: CreateCatalogEntryDto, userId: string) {
-    const client = await this.prisma.client.create({ data: dto });
-    await this.auditLog.record({ userId, entityType: "Client", entityId: client.id, action: "CREATE", after: client });
-    return client;
+    try {
+      const client = await this.prisma.client.create({ data: dto });
+      await this.auditLog.record({ userId, entityType: "Client", entityId: client.id, action: "CREATE", after: client });
+      return client;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("Já existe um cliente com este nome.");
+      }
+      throw error;
+    }
   }
 
   list(includeInactive = false) {

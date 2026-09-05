@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { AuditLogService } from "../common/audit-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateCatalogEntryDto, InactivateDto, UpdateCatalogEntryDto } from "./dto/catalog-entry.dto";
@@ -12,15 +13,22 @@ export class MediaChannelsService {
   ) {}
 
   async create(dto: CreateCatalogEntryDto, userId: string) {
-    const mediaChannel = await this.prisma.mediaChannel.create({ data: dto });
-    await this.auditLog.record({
-      userId,
-      entityType: "MediaChannel",
-      entityId: mediaChannel.id,
-      action: "CREATE",
-      after: mediaChannel,
-    });
-    return mediaChannel;
+    try {
+      const mediaChannel = await this.prisma.mediaChannel.create({ data: dto });
+      await this.auditLog.record({
+        userId,
+        entityType: "MediaChannel",
+        entityId: mediaChannel.id,
+        action: "CREATE",
+        after: mediaChannel,
+      });
+      return mediaChannel;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("Já existe um meio com este nome.");
+      }
+      throw error;
+    }
   }
 
   list(includeInactive = false) {

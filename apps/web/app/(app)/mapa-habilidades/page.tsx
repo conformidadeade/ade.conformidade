@@ -7,6 +7,7 @@ import { ApiError, api } from "@/lib/api/client";
 import type { SkillImportRowError, SkillSummary } from "@/lib/api/types";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { ExportButtons } from "@/components/export-buttons";
 import { SkillEvidencesDialog } from "@/components/skills/skill-evidences-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,12 +64,15 @@ export default function MapaHabilidadesPage() {
             atual de liberação. Clique numa linha para ver as evidências.
           </p>
         </div>
-        {canWrite && (
-          <div className="flex gap-2 shrink-0">
-            <ImportDialog onImported={() => queryClient.invalidateQueries({ queryKey: ["skills"] })} />
-            <ManualSkillDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["skills"] })} />
-          </div>
-        )}
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {canWrite && (
+            <div className="flex gap-2">
+              <ImportDialog onImported={() => queryClient.invalidateQueries({ queryKey: ["skills"] })} />
+              <ManualSkillDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["skills"] })} />
+            </div>
+          )}
+          <ExportButtons basePath="/skills" baseFilename="mapa-habilidades" />
+        </div>
       </div>
 
       <Card>

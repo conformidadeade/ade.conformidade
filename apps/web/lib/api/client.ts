@@ -120,6 +120,43 @@ async function postFile<T>(path: string, formData: FormData, isRetry = false): P
   return data as T;
 }
 
+/** Baixa um arquivo autenticado (exportações, item 4) e dispara o save do navegador. */
+async function downloadFile(path: string, filename: string, isRetry = false): Promise<void> {
+  const accessToken = useAuthStore.getState().accessToken;
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+  });
+
+  if (response.status === 401 && !isRetry) {
+    refreshPromise ??= refreshSession().finally(() => {
+      refreshPromise = null;
+    });
+    const refreshed = await refreshPromise;
+    if (refreshed) return downloadFile(path, filename, true);
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = response.statusText;
+    try {
+      message = JSON.parse(text)?.message ?? message;
+    } catch {
+      /* corpo não era JSON — mantém statusText */
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: <T>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: "GET" }),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
@@ -127,4 +164,5 @@ export const api = {
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "PATCH", body }),
   postFile: <T>(path: string, formData: FormData) => postFile<T>(path, formData),
+  download: (path: string, filename: string) => downloadFile(path, filename),
 };

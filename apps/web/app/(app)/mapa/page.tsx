@@ -6,6 +6,7 @@ import type { CombinationStatus, CombinationSummary } from "@reanalise-erp/types
 import { api } from "@/lib/api/client";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
 import { CycleDrilldownDialog } from "@/components/combinations/cycle-drilldown-dialog";
+import { ExportButtons } from "@/components/export-buttons";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,12 +50,15 @@ export default function MapaLiberacaoPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold">Mapa de Liberação de Reanálise</h1>
-        <p className="text-sm text-muted-foreground">
-          Situação de todas as combinações Analista + Cliente + Meio. Clique numa linha para ver os PIs do ciclo
-          atual.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Mapa de Liberação de Reanálise</h1>
+          <p className="text-sm text-muted-foreground">
+            Situação de todas as combinações Analista + Cliente + Meio. Clique numa linha para ver os PIs do
+            ciclo atual.
+          </p>
+        </div>
+        <ExportButtons basePath="/combinations" baseFilename="mapa-liberacao" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
