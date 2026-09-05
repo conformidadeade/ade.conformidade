@@ -63,3 +63,15 @@ Reaproveita o padrão RBAC configurável (`Role` + `Permission` + associação N
 ## Auditoria
 
 Toda ação relevante grava em `AuditLog` (CRUD de cadastros/diretrizes) e/ou `ReanalysisEvent` (mudanças de estado de uma combinação). Nenhum dos dois é editável/removível pela aplicação.
+
+## Fase 2 (adendo 05/09/2026) — Mapa de Habilidades e ajustes
+
+Ver `docs/DECISIONS.md` para as decisões específicas. Resumo estrutural:
+
+- **`ReanalysisReturn.piNumber`** (novo, obrigatório): texto livre, nunca depende de um `AnalyzedProcess` existir. O `ReleaseService` tenta vincular automaticamente a um processo já lançado na mesma combinação (mesmo `piNumber`) — vínculo silencioso, nunca bloqueia o registro quando não encontra.
+- **Mapa de Habilidades — entidades novas**, deliberadamente paralelas e independentes de `AnalystClientMedia` (nunca lidas por ele, nunca o afetam):
+  - `AnalystSkill` — Analista+Cliente+Meio já demonstrado, chave única.
+  - `AnalystSkillEvidence` — append-only, um PI (texto livre, sem FK) por evidência, com `origin` (`LANCAMENTO` | `MANUAL` | `IMPORTACAO`) para auditoria.
+  - Alimentada por três caminhos que convergem na mesma tabela: automático (todo lançamento correto, dentro da mesma transação via `ReleaseRepositoryPort.recordSkillEvidence`), manual (`POST /skills`) e importação em massa validada tudo-ou-nada (`POST /skills/import`, exceljs).
+- **Drill-down do ciclo atual** (`GET /combinations/:id/current-cycle`): deriva do `ReanalysisEvent` mais recente que zera a construção (`RETURN_RESET`/`MANUAL_RESET`/`AUTO_RETURN`/`MANUAL_RETURN`), não de um campo próprio — mantém o princípio de estado derivado de eventos.
+- **Exportação** (`/combinations/export.xlsx|pdf`, `/skills/export.xlsx|pdf`): camada de apresentação pura (`apps/api/src/common/excel-export.ts`, `pdf-export.ts`), sem lógica de negócio própria — sempre chama o mesmo `getMap({})` usado pelas telas, sem filtro.

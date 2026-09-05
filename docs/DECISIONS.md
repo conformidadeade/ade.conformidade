@@ -16,6 +16,23 @@
 - **Sessão do frontend:** bearer token (JWT) em localStorage com refresh automático, não cookies httpOnly + CSRF (padrão mais resistente a XSS usado no leilao-erp). Razoável para uso interno; reavaliar se o sistema for exposto além de rede interna/VPN.
 - **Dashboard (item 20):** todos os indicadores "por cliente/meio" (liberações e devoluções) são escopados ao mesmo mês/ano do restante do dashboard, para manter os números coerentes entre si — não são totais históricos.
 
+## Fase 2 — confirmadas com a liderança (05/09/2026)
+
+1. **Exportação (item 4):** restrita a LIDERANÇA/ADMINISTRADOR mesmo quando a tela de origem (Mapa de Liberação, Mapa de Habilidades) é de leitura geral — a ação de exportar é mais restrita que a de visualizar.
+2. **`Analyst.name` (item 6.3):** passou a ser `@unique` no schema — nome de analista é único na operação. Necessário para a importação de habilidades resolver a coluna ANALISTA sem ambiguidade.
+
+## Fase 2 — assumidas ao implementar
+
+- **PI na devolução (item 1):** o vínculo automático usa o `AnalyzedProcess` mais recente com o mesmo `(combinationId, piNumber)` quando há mais de um (ex.: reprocessamento com `allowDuplicate`). Não especificado explicitamente; escolha pragmática.
+- **"Result" opcional no lançamento (item 2):** mantido no contrato da API (não removido), default `CORRETO` quando ausente — a tela simplesmente não o envia mais. Preserva o teste de regra de negócio já existente para `INCORRETO` no `ReleaseService`.
+- **Drill-down do ciclo atual (item 5):** o corte é sempre exatamente `constructionCount` processos (não "tudo que veio depois do último reset"). Numa combinação LIBERADA, processos lançados após a liberação continuam sendo registrados mas não incrementam mais o contador — sem esse corte, a lista poderia mostrar mais PIs do que o número exibido no Mapa, quebrando a garantia pedida de "a lista bate com o progresso exibido".
+- **Habilidade automática (item 6.2):** todo lançamento correto marca a habilidade, independentemente do status atual da combinação no motor de reanálise (`EM_CONSTRUCAO`, `LIBERADO` ou `RETORNADO`) — a habilidade é sobre competência demonstrada, não sobre status de liberação.
+- **Resolução de nomes na importação (item 6.3):** comparação case-insensitive e com `trim()` nas pontas, para tolerar variação de digitação na planilha.
+
+## Correção de bug pré-existente (encontrado durante verificação manual da Fase 2)
+
+Criar Cliente, Meio ou Analista com nome já existente retornava `500 Internal Server Error` (violação de unicidade do Prisma não tratada) em vez de `409 Conflict` — os três `catalog` services não tinham o mesmo tratamento que já existia em `UsersService`. Corrigido nos três, sem relação com o escopo do adendo, mas descoberto e resolvido no processo.
+
 ## Em aberto — não implementar sem confirmar (item 28)
 
 Sinalizadas no requisito original e ainda pendentes de decisão da liderança. Cada uma será revisitada quando a funcionalidade correspondente for implementada, com uma proposta explícita antes do código, não assumida silenciosamente:
