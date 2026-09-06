@@ -319,6 +319,11 @@ interface ImportResult {
 function ImportDialog({ onImported }: { onImported: () => void }) {
   const [open, setOpen] = useState(false);
   const [errors, setErrors] = useState<SkillImportRowError[] | null>(null);
+  // Distinto de `errors` de propósito: um erro real do servidor (500, rede
+  // etc.) nunca deve virar uma linha fictícia na tabela de erros de
+  // validação — os dois significam coisas completamente diferentes para
+  // quem está tentando corrigir a planilha (bug nosso vs. dado da planilha).
+  const [serverError, setServerError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -331,14 +336,23 @@ function ImportDialog({ onImported }: { onImported: () => void }) {
     onSuccess: (data) => {
       setResult(data);
       setErrors(null);
+      setServerError(null);
       onImported();
     },
     onError: (err) => {
       setResult(null);
-      if (err instanceof ApiError && err.body && typeof err.body === "object" && "errors" in err.body) {
+      // Só é um relatório de validação linha a linha quando a API de fato
+      // devolveu esse formato (422 do SkillsImportErrorFilter). Qualquer
+      // outra coisa — 500, timeout, falha de rede — é um erro nosso, não um
+      // problema na planilha, e é mostrado como tal, nunca como "Linha 0".
+      if (err instanceof ApiError && err.statusCode === 422 && err.body && typeof err.body === "object" && "errors" in err.body) {
         setErrors((err.body as { errors: SkillImportRowError[] }).errors);
+        setServerError(null);
       } else {
-        setErrors([{ line: 0, column: "PI", value: err instanceof ApiError ? err.message : "Erro desconhecido" }]);
+        setErrors(null);
+        setServerError(
+          "Ocorreu um erro ao processar o arquivo. Nenhuma linha foi gravada. Tente novamente ou contate o suporte.",
+        );
       }
     },
   });
@@ -356,6 +370,7 @@ function ImportDialog({ onImported }: { onImported: () => void }) {
         setOpen(o);
         if (!o) {
           setErrors(null);
+          setServerError(null);
           setResult(null);
         }
       }}
@@ -396,6 +411,8 @@ function ImportDialog({ onImported }: { onImported: () => void }) {
             {result.rowsImported} linha(s) importada(s), {result.skillsAffected} habilidade(s) afetada(s).
           </p>
         )}
+
+        {serverError && <p className="text-sm rounded-md border border-destructive bg-destructive/10 p-3">{serverError}</p>}
 
         {errors && (
           <div className="flex flex-col gap-2">

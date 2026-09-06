@@ -188,28 +188,53 @@ export class SkillsService {
       throw new SkillsImportValidationError(errors);
     }
 
-    const skillIds = new Set<string>();
-    await this.prisma.$transaction(async (tx) => {
-      for (const r of rows) {
-        const analyst = analystByName.get(r.analystName.toLowerCase())!;
-        const client = clientByName.get(r.clientName.toLowerCase())!;
-        const media = mediaByName.get(r.mediaName.toLowerCase())!;
-        const skill = await this.recordEvidence(
-          {
-            analystId: analyst.id,
-            clientId: client.id,
-            mediaChannelId: media.id,
-            piNumber: r.piNumber,
-            origin: "IMPORTACAO",
-            recordedByUserId: userId,
-          },
-          tx,
-        );
-        skillIds.add(skill.id);
-      }
-    });
+    // Causa raiz de um bug real (planilha grande de verdade — 3 abas, dezenas
+    // de linhas — travava com "Transaction already closed"): a versão
+    // anterior fazia 2 idas ao banco POR LINHA (upsert da skill + create da
+    // evidência), sequencialmente, dentro de uma única transação interativa
+    // — com o limite padrão do Prisma de 5s, uma planilha grande o bastante
+    // estourava o timeout, e a PrismaClientKnownRequestError não tratada
+    // virava 500 (ver skills-import-error.filter.ts, que só sabe traduzir
+    // SkillsImportValidationError). Agora resolve as combinações Analista+
+    // Cliente+Meio ÚNICAS primeiro (upsert só uma vez por combinação, não
+    // por linha) e grava todas as evidências de uma vez com createMany —
+    // de O(2×linhas) idas sequenciais ao banco para O(combinações+1).
+    const uniqueSkillInputs = new Map<string, { analystId: string; clientId: string; mediaChannelId: string }>();
+    const skillKeyByLine = new Map<number, string>();
+    for (const r of rows) {
+      const analyst = analystByName.get(r.analystName.toLowerCase())!;
+      const client = clientByName.get(r.clientName.toLowerCase())!;
+      const media = mediaByName.get(r.mediaName.toLowerCase())!;
+      const key = `${analyst.id}|${client.id}|${media.id}`;
+      uniqueSkillInputs.set(key, { analystId: analyst.id, clientId: client.id, mediaChannelId: media.id });
+      skillKeyByLine.set(r.line, key);
+    }
 
-    return { rowsImported: rows.length, skillsAffected: skillIds.size };
+    await this.prisma.$transaction(
+      async (tx) => {
+        const skillIdByKey = new Map<string, string>();
+        for (const [key, ids] of uniqueSkillInputs) {
+          const skill = await tx.analystSkill.upsert({
+            where: { analystId_clientId_mediaChannelId: ids },
+            create: ids,
+            update: {},
+          });
+          skillIdByKey.set(key, skill.id);
+        }
+
+        await tx.analystSkillEvidence.createMany({
+          data: rows.map((r) => ({
+            skillId: skillIdByKey.get(skillKeyByLine.get(r.line)!)!,
+            piNumber: r.piNumber,
+            origin: "IMPORTACAO" as const,
+            recordedByUserId: userId,
+          })),
+        });
+      },
+      { timeout: 30_000 }, // rede de segurança para planilhas bem grandes — o ganho real é ter poucas idas ao banco, não o timeout maior
+    );
+
+    return { rowsImported: rows.length, skillsAffected: uniqueSkillInputs.size };
   }
 
   private static readonly REQUIRED_COLUMNS = ["ANALISTA", "CLIENTE", "MEIO", "PI"] as const;

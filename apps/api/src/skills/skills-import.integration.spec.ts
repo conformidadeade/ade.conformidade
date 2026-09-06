@@ -33,6 +33,7 @@ describe("POST /skills/import (integração — multipart real)", () => {
         },
         analystSkillEvidence: {
           create: async ({ data }: any) => ({ id: "ev-1", ...data }),
+          createMany: async ({ data }: any) => ({ count: (data as unknown[]).length }),
         },
       }),
   };

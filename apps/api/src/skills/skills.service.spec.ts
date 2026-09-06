@@ -72,6 +72,10 @@ function buildPrismaFake(seed: {
         evidences.push(evidence);
         return evidence;
       }),
+      createMany: jest.fn(async ({ data }: any) => {
+        for (const d of data as any[]) evidences.push({ id: `ev-${++seq}`, ...d });
+        return { count: data.length };
+      }),
     },
   };
 
@@ -81,6 +85,11 @@ function buildPrismaFake(seed: {
     analyst: { findMany: jest.fn(async () => seed.analysts) },
     client: { findMany: jest.fn(async () => seed.clients) },
     mediaChannel: { findMany: jest.fn(async () => seed.mediaChannels) },
+    // Expostos também no nível raiz (mesmos spies do `db` usado dentro da
+    // transação) só para as asserções de "quantas idas ao banco" nos testes
+    // do bug de timeout — o código de produção só os chama via tx.
+    analystSkill: db.analystSkill,
+    analystSkillEvidence: db.analystSkillEvidence,
     $transaction: jest.fn(async (work: (tx: unknown) => unknown) => work(db)),
   };
 }
@@ -292,5 +301,78 @@ describe("SkillsService.getEvidences — isolamento por ANALISTA (adendo Acesso 
     const service = new SkillsService(prisma as never);
     const lideranca: AuthenticatedUser = { id: "u-lider", role: "LIDERANCA", analystId: null };
     await expect(service.getEvidences("skill-1", lideranca)).resolves.toEqual([]);
+  });
+});
+
+describe("SkillsService.importFromWorkbook — bug (novo): timeout de transação em planilha grande", () => {
+  function buildSeed() {
+    return {
+      analysts: [
+        { id: "a1", name: "Ana Correa" },
+        { id: "a2", name: "Bruno Silva" },
+        { id: "a3", name: "Carla Nunes" },
+      ],
+      clients: [{ id: "c1", name: "SECOM" }],
+      mediaChannels: [{ id: "m1", name: "TV" }],
+    };
+  }
+
+  async function buildWorkbook(rows: string[][]): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Habilidades");
+    sheet.addRow(["ANALISTA", "CLIENTE", "MEIO", "PI"]);
+    for (const row of rows) sheet.addRow(row);
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  test("PI repetido entre analistas DIFERENTES (habilidades diferentes) importa com sucesso — cada um recebe sua própria evidência", async () => {
+    const prisma = buildPrismaFake(buildSeed());
+    const service = new SkillsService(prisma as never);
+    // Mesmo PI, três analistas diferentes — regra confirmada: não é motivo de bloqueio.
+    const buffer = await buildWorkbook([
+      ["Ana Correa", "SECOM", "TV", "PI-COMPARTILHADO"],
+      ["Bruno Silva", "SECOM", "TV", "PI-COMPARTILHADO"],
+      ["Carla Nunes", "SECOM", "TV", "PI-COMPARTILHADO"],
+    ]);
+
+    const result = await service.importFromWorkbook(buffer, "user-1");
+
+    expect(result.rowsImported).toBe(3);
+    expect(result.skillsAffected).toBe(3); // 3 combinações analista+cliente+meio distintas
+    expect(prisma.skills).toHaveLength(3);
+    expect(prisma.evidences).toHaveLength(3);
+    expect(prisma.evidences.every((e) => e.piNumber === "PI-COMPARTILHADO")).toBe(true);
+    // Cada evidência aponta para a skill do analista certo, não todas para a mesma.
+    const skillIds = new Set(prisma.evidences.map((e) => e.skillId));
+    expect(skillIds.size).toBe(3);
+  });
+
+  test("causa raiz do bug relatado: número de idas ao banco não cresce linearmente com o número de linhas", async () => {
+    const prisma = buildPrismaFake(buildSeed());
+    const service = new SkillsService(prisma as never);
+    // 30 linhas, mas só 3 combinações analista+cliente+meio distintas (cada
+    // analista repete a mesma combinação 10x com PIs diferentes) — a versão
+    // anterior fazia 2 idas ao banco POR LINHA (60 chamadas sequenciais);
+    // isso, numa planilha grande de verdade, estourava o timeout padrão de
+    // 5s da transação interativa do Prisma ("Transaction already closed").
+    const rows: string[][] = [];
+    for (let i = 0; i < 10; i++) {
+      rows.push(["Ana Correa", "SECOM", "TV", `PI-A-${i}`]);
+      rows.push(["Bruno Silva", "SECOM", "TV", `PI-B-${i}`]);
+      rows.push(["Carla Nunes", "SECOM", "TV", `PI-C-${i}`]);
+    }
+    const buffer = await buildWorkbook(rows);
+
+    const result = await service.importFromWorkbook(buffer, "user-1");
+
+    expect(result.rowsImported).toBe(30);
+    expect(result.skillsAffected).toBe(3);
+    // upsert só uma vez por combinação única (3), nunca por linha (30).
+    expect(prisma.analystSkill.upsert).toHaveBeenCalledTimes(3);
+    // Todas as evidências em UM único createMany, não 30 creates sequenciais.
+    expect(prisma.analystSkillEvidence.createMany).toHaveBeenCalledTimes(1);
+    expect(prisma.analystSkillEvidence.create).not.toHaveBeenCalled();
+    expect(prisma.evidences).toHaveLength(30);
   });
 });
