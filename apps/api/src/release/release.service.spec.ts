@@ -168,6 +168,7 @@ describe("ReleaseService (orquestração sobre release-engine)", () => {
         reason: "erro",
         occurredAt: new Date("2026-01-10"),
         registeredByUserId: userId,
+        origin: "REANALISE",
       }),
     ).rejects.toThrow(CombinationNotFoundError);
   });
@@ -192,6 +193,7 @@ describe("ReleaseService (orquestração sobre release-engine)", () => {
       reason: "r1",
       occurredAt: new Date("2026-01-10"),
       registeredByUserId: userId,
+      origin: "REANALISE",
     });
     const result = await service.registerReturn({
       analystId,
@@ -201,11 +203,76 @@ describe("ReleaseService (orquestração sobre release-engine)", () => {
       reason: "r2",
       occurredAt: new Date("2026-01-20"),
       registeredByUserId: userId,
+      origin: "REANALISE",
     });
     expect(result.status).toBe("RETORNADO");
     expect(repo.returns).toHaveLength(2);
     expect(repo.returns[1]!.contextState).toBe("LIBERADO");
     expect(repo.events.some((e) => e.type === "AUTO_RETURN")).toBe(true);
+  });
+
+  test("adendo 'Origem da devolução': devolução de origem CLIENTE numa combinação LIBERADA conta para a regra dos '2 no mês' exatamente como REANALISE (mesmo efeito no motor, origem é só informativa)", async () => {
+    for (let i = 0; i < 5; i++) {
+      await service.registerProcess({
+        analystId,
+        clientId,
+        mediaChannelId,
+        piNumber: `PI-${i}`,
+        analysisDate: new Date(2026, 0, i + 1),
+        result: "CORRETO",
+        recordedByUserId: userId,
+      });
+    }
+    await service.registerReturn({
+      analystId,
+      clientId,
+      mediaChannelId,
+      piNumber: "PI-cliente-1",
+      reason: "reclamação do cliente",
+      occurredAt: new Date("2026-01-10"),
+      registeredByUserId: userId,
+      origin: "CLIENTE",
+    });
+    const result = await service.registerReturn({
+      analystId,
+      clientId,
+      mediaChannelId,
+      piNumber: "PI-cliente-2",
+      reason: "reclamação do cliente",
+      occurredAt: new Date("2026-01-20"),
+      registeredByUserId: userId,
+      origin: "CLIENTE",
+    });
+    expect(result.status).toBe("RETORNADO");
+    expect(repo.returns).toHaveLength(2);
+    expect(repo.returns.every((r) => r.origin === "CLIENTE")).toBe(true);
+    expect(repo.events.some((e) => e.type === "AUTO_RETURN")).toBe(true);
+  });
+
+  test("adendo 'Origem da devolução': devolução de origem CLIENTE numa combinação EM_CONSTRUCAO zera a construção exatamente como REANALISE zeraria", async () => {
+    await service.registerProcess({
+      analystId,
+      clientId,
+      mediaChannelId,
+      piNumber: "PI-0",
+      analysisDate: new Date("2026-01-05"),
+      result: "CORRETO",
+      recordedByUserId: userId,
+    });
+    const result = await service.registerReturn({
+      analystId,
+      clientId,
+      mediaChannelId,
+      piNumber: "PI-cliente-em-construcao",
+      reason: "reclamação do cliente durante a construção",
+      occurredAt: new Date("2026-01-10"),
+      registeredByUserId: userId,
+      origin: "CLIENTE",
+    });
+    expect(result.status).toBe("EM_CONSTRUCAO");
+    expect(repo.events.some((e) => e.type === "RETURN_RESET")).toBe(true);
+    expect(repo.returns[0]!.origin).toBe("CLIENTE");
+    expect(repo.returns[0]!.contextState).toBe("EM_CONSTRUCAO");
   });
 
   test("devolução com PI correspondente a um processo já lançado vincula processId automaticamente (item 1)", async () => {
@@ -226,6 +293,7 @@ describe("ReleaseService (orquestração sobre release-engine)", () => {
       reason: "erro encontrado depois",
       occurredAt: new Date("2026-01-15"),
       registeredByUserId: userId,
+      origin: "REANALISE",
     });
     expect(result).toBeTruthy();
     expect(repo.returns).toHaveLength(1);
@@ -256,6 +324,7 @@ describe("ReleaseService (orquestração sobre release-engine)", () => {
       reason: "reclamação do cliente",
       occurredAt: new Date("2026-01-15"),
       registeredByUserId: userId,
+      origin: "CLIENTE",
     });
     expect(result.status).toBe("LIBERADO");
     expect(repo.returns).toHaveLength(1);

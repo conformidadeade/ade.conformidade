@@ -7,7 +7,7 @@ import {
   DomainEvent,
   monthKeyOf,
 } from "@reanalise-erp/release-engine";
-import { CombinationStatus } from "@reanalise-erp/types";
+import { CombinationStatus, ReturnOrigin } from "@reanalise-erp/types";
 import { DuplicateProcessError } from "./errors";
 import { RELEASE_UOW, ReleaseUnitOfWork } from "./release-repository.port";
 
@@ -35,6 +35,8 @@ export interface RegisterReturnInput {
   observation?: string;
   occurredAt: Date;
   registeredByUserId: string;
+  /** Adendo "Origem da devolução" — puramente informativa, nunca lida pelo release-engine. */
+  origin: ReturnOrigin;
 }
 
 export interface ManualActionInput {
@@ -161,6 +163,7 @@ export class ReleaseService {
         registeredByUserId: input.registeredByUserId,
         contextState,
         monthKey,
+        origin: input.origin,
       });
       await repo.saveStateAndEvents({
         combinationId: combination.id,

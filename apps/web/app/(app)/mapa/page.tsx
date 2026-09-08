@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { CombinationStatus, CombinationSummary } from "@reanalise-erp/types";
+import type { CombinationStatus, CombinationSummary, ReturnOrigin } from "@reanalise-erp/types";
 import { api } from "@/lib/api/client";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -34,6 +34,7 @@ export default function MapaLiberacaoPage() {
   const [mediaChannelId, setMediaChannelId] = useState<string>(ALL);
   const [analystId, setAnalystId] = useState<string>(ALL);
   const [status, setStatus] = useState<CombinationStatus | undefined>(undefined);
+  const [origin, setOrigin] = useState<string>(ALL);
   const [drilldown, setDrilldown] = useState<{ id: string; label: string } | null>(null);
 
   const { data: clients } = useClients();
@@ -48,8 +49,9 @@ export default function MapaLiberacaoPage() {
     // (adendo "Acesso restrito", item 1) — nem enviamos o parâmetro.
     if (!isAnalista && analystId !== ALL) params.set("analystId", analystId);
     if (status) params.set("status", status);
+    if (origin !== ALL) params.set("origin", origin);
     return params.toString();
-  }, [clientId, mediaChannelId, analystId, status, isAnalista]);
+  }, [clientId, mediaChannelId, analystId, status, origin, isAnalista]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["combinations", query],
@@ -91,8 +93,12 @@ export default function MapaLiberacaoPage() {
       <Card>
         <CardHeader>
           <CardTitle>Filtros</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            O filtro de Origem considera devoluções registradas no mesmo mês exibido na coluna &quot;Devoluções no
+            mês&quot;.
+          </p>
         </CardHeader>
-        <CardContent className={cn("grid grid-cols-1 gap-3", isAnalista ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
+        <CardContent className={cn("grid grid-cols-1 gap-3", isAnalista ? "sm:grid-cols-3" : "sm:grid-cols-4")}>
           <Select value={clientId} onValueChange={setClientId}>
             <SelectTrigger>
               <SelectValue placeholder="Cliente" />
@@ -136,6 +142,17 @@ export default function MapaLiberacaoPage() {
               </SelectContent>
             </Select>
           )}
+
+          <Select value={origin} onValueChange={setOrigin}>
+            <SelectTrigger>
+              <SelectValue placeholder="Origem" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todas as origens</SelectItem>
+              <SelectItem value={"REANALISE" satisfies ReturnOrigin}>Reanálise</SelectItem>
+              <SelectItem value={"CLIENTE" satisfies ReturnOrigin}>Cliente</SelectItem>
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 

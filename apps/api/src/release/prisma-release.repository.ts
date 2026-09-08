@@ -190,6 +190,7 @@ class TxReleaseRepository implements ReleaseRepositoryPort {
         registeredByUserId: input.registeredByUserId,
         contextState: input.contextState,
         monthKey: input.monthKey,
+        origin: input.origin,
       },
       select: { id: true },
     });

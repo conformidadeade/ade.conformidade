@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
-import type { CombinationStatus } from "@reanalise-erp/types";
+import type { CombinationStatus, ReturnOrigin } from "@reanalise-erp/types";
 import { ApiError, api } from "@/lib/api/client";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
 import { StatusBadge } from "@/components/status-badge";
@@ -36,18 +36,28 @@ export default function DevolucoesPage() {
     reason: "",
     observation: "",
     occurredAt: todayIso(),
+    // Adendo "Origem da devolução" — sem valor inicial de propósito: a
+    // liderança escolhe explicitamente, sem default silencioso.
+    origin: "" as ReturnOrigin | "",
   });
 
   const mutation = useMutation({
     mutationFn: () => api.post<RegisterReturnResult>("/release/returns", form),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["combinations"] });
-      setForm((f) => ({ ...f, piNumber: "", reason: "", observation: "" }));
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setForm((f) => ({ ...f, piNumber: "", reason: "", observation: "", origin: "" }));
     },
   });
 
   const canSubmit =
-    form.analystId && form.clientId && form.mediaChannelId && form.piNumber && form.reason && form.occurredAt;
+    form.analystId &&
+    form.clientId &&
+    form.mediaChannelId &&
+    form.piNumber &&
+    form.reason &&
+    form.occurredAt &&
+    form.origin;
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -121,7 +131,7 @@ export default function DevolucoesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="piNumber">Nº do PI</Label>
                 <Input
@@ -150,6 +160,21 @@ export default function DevolucoesPage() {
                   onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
                   required
                 />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Origem da devolução</Label>
+                <Select
+                  value={form.origin}
+                  onValueChange={(v) => setForm((f) => ({ ...f, origin: v as ReturnOrigin }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="REANALISE">Reanálise</SelectItem>
+                    <SelectItem value="CLIENTE">Cliente</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

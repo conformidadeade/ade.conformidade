@@ -31,6 +31,10 @@ export class CombinationsService {
         clientId: query.clientId,
         mediaChannelId: query.mediaChannelId,
         status: query.status,
+        // Adendo "Origem da devolução" — só entram combinações com ao
+        // menos 1 devolução da origem selecionada dentro do mesmo mês/ano
+        // usado para a coluna "Devoluções no mês" (mesma janela).
+        ...(query.origin ? { returns: { some: { monthKey, origin: query.origin } } } : {}),
       },
       include: { analyst: true, client: true, mediaChannel: true },
       orderBy: [{ client: { name: "asc" } }, { mediaChannel: { name: "asc" } }, { analyst: { name: "asc" } }],

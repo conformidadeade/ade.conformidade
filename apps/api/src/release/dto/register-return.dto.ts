@@ -1,5 +1,8 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsDateString, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
+import { ReturnOrigin } from "@reanalise-erp/types";
+import { IsDateString, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
+
+const ORIGINS: ReturnOrigin[] = ["REANALISE", "CLIENTE"];
 
 export class RegisterReturnDto {
   @ApiProperty() @IsUUID() analystId!: string;
@@ -17,4 +20,11 @@ export class RegisterReturnDto {
   @ApiProperty() @IsString() @MinLength(1) reason!: string;
   @ApiProperty({ required: false }) @IsOptional() @IsString() observation?: string;
   @ApiProperty() @IsDateString() occurredAt!: string;
+
+  /** Adendo "Origem da devolução" — obrigatória, sem default silencioso: a
+   * liderança escolhe explicitamente na tela. Puramente informativa, nunca
+   * lida por packages/release-engine. */
+  @ApiProperty({ enum: ORIGINS })
+  @IsIn(ORIGINS)
+  origin!: ReturnOrigin;
 }

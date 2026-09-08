@@ -264,6 +264,13 @@ model ReanalysisReturn {
   /// para o indicador de relatório do item 10.
   monthKey     String
 
+  /// Origem da devolução (adendo "Origem da devolução", 08/09/2026) — dimensão
+  /// nova e independente de contextState: puramente informativa/de relatório,
+  /// NUNCA lida por packages/release-engine nem por nenhuma regra de contagem
+  /// (construção, "2 no mês"). Obrigatória, sem default silencioso — a
+  /// liderança escolhe explicitamente na tela de Devoluções.
+  origin ReturnOrigin
+
   createdAt DateTime @default(now())
 
   combination AnalystClientMedia @relation(fields: [combinationId], references: [id], onDelete: Restrict)
@@ -274,6 +281,11 @@ model ReanalysisReturn {
   @@index([combinationId, contextState, monthKey])
   @@index([combinationId, piNumber])
   @@map("reanalysis_returns")
+}
+
+enum ReturnOrigin {
+  REANALISE
+  CLIENTE
 }
 
 enum ReanalysisEventType {

@@ -1,4 +1,5 @@
 import { CombinationState, DomainEvent } from "@reanalise-erp/release-engine";
+import { ReturnOrigin } from "@reanalise-erp/types";
 
 export interface CombinationRecord {
   id: string;
@@ -36,6 +37,8 @@ export interface CreateReturnInput {
   /** Estado da combinação ANTES de aplicar a devolução (item 10). */
   contextState: CombinationState["status"];
   monthKey: string;
+  /** Adendo "Origem da devolução" — puramente informativa, nunca lida pelo release-engine. */
+  origin: ReturnOrigin;
 }
 
 export interface SaveStateAndEventsInput {

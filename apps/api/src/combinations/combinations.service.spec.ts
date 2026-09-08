@@ -124,6 +124,92 @@ describe("CombinationsService.getCurrentCycleProcesses (adendo Fase 2, item 5)",
   });
 });
 
+describe("CombinationsService.getMap — filtro de Origem (adendo 'Origem da devolução', 08/09/2026)", () => {
+  interface FakeCombo {
+    id: string;
+    analystId: string;
+    clientId: string;
+    mediaChannelId: string;
+    status: string;
+    constructionCount: number;
+  }
+  interface FakeReturnRow {
+    combinationId: string;
+    monthKey: string;
+    origin: "REANALISE" | "CLIENTE";
+  }
+
+  function buildMapPrismaFake(combos: FakeCombo[], returns: FakeReturnRow[]) {
+    const names = { a1: "Ana", a2: "Bruno", cl1: "SECOM", cl2: "GDF", m1: "TV", m2: "Radio" } as Record<string, string>;
+    return {
+      analystClientMedia: {
+        findMany: jest.fn(async ({ where }: any) => {
+          return combos
+            .filter((c) => where.analystId === undefined || c.analystId === where.analystId)
+            .filter((c) => where.clientId === undefined || c.clientId === where.clientId)
+            .filter((c) => where.mediaChannelId === undefined || c.mediaChannelId === where.mediaChannelId)
+            .filter((c) => where.status === undefined || c.status === where.status)
+            .filter((c) => {
+              if (!where.returns) return true;
+              const { monthKey, origin } = where.returns.some;
+              return returns.some((r) => r.combinationId === c.id && r.monthKey === monthKey && r.origin === origin);
+            })
+            .map((c) => ({
+              ...c,
+              analyst: { name: names[c.analystId] },
+              client: { name: names[c.clientId] },
+              mediaChannel: { name: names[c.mediaChannelId] },
+            }));
+        }),
+      },
+      guideline: { findMany: jest.fn(async () => []) },
+      reanalysisReturn: {
+        groupBy: jest.fn(async ({ where }: any) => {
+          const ids: string[] = where.combinationId.in;
+          const counts = new Map<string, number>();
+          for (const r of returns) {
+            if (r.monthKey === where.monthKey && ids.includes(r.combinationId)) {
+              counts.set(r.combinationId, (counts.get(r.combinationId) ?? 0) + 1);
+            }
+          }
+          return [...counts.entries()].map(([combinationId, count]) => ({ combinationId, _count: { _all: count } }));
+        }),
+      },
+    };
+  }
+
+  const combos: FakeCombo[] = [
+    { id: "c1", analystId: "a1", clientId: "cl1", mediaChannelId: "m1", status: "LIBERADO", constructionCount: 5 },
+    { id: "c2", analystId: "a1", clientId: "cl2", mediaChannelId: "m2", status: "LIBERADO", constructionCount: 5 },
+    { id: "c3", analystId: "a2", clientId: "cl1", mediaChannelId: "m1", status: "LIBERADO", constructionCount: 5 },
+  ];
+  const returns: FakeReturnRow[] = [
+    { combinationId: "c1", monthKey: "2026-09", origin: "REANALISE" },
+    { combinationId: "c2", monthKey: "2026-09", origin: "CLIENTE" },
+  ];
+
+  test("sem filtro de origem: todas as combinações aparecem, como hoje", async () => {
+    const prisma = buildMapPrismaFake(combos, returns);
+    const service = new CombinationsService(prisma as never);
+    const result = await service.getMap({ month: 9, year: 2026 } as never);
+    expect(result.map((r) => r.id).sort()).toEqual(["c1", "c2", "c3"]);
+  });
+
+  test("origin=CLIENTE: só combinações com devolução de origem CLIENTE no mês", async () => {
+    const prisma = buildMapPrismaFake(combos, returns);
+    const service = new CombinationsService(prisma as never);
+    const result = await service.getMap({ month: 9, year: 2026, origin: "CLIENTE" } as never);
+    expect(result.map((r) => r.id)).toEqual(["c2"]);
+  });
+
+  test("origin=REANALISE: só combinações com devolução de origem REANALISE no mês (c3, sem devolução nenhuma, fica de fora)", async () => {
+    const prisma = buildMapPrismaFake(combos, returns);
+    const service = new CombinationsService(prisma as never);
+    const result = await service.getMap({ month: 9, year: 2026, origin: "REANALISE" } as never);
+    expect(result.map((r) => r.id)).toEqual(["c1"]);
+  });
+});
+
 describe("CombinationsService.getCurrentCycleProcesses — isolamento por ANALISTA (adendo Acesso restrito, item 1)", () => {
   const at = (d: string) => new Date(d);
 
