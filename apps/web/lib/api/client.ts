@@ -1,8 +1,21 @@
 "use client";
 
-import { useAuthStore } from "@/lib/stores/auth-store";
+import { type SessionUser, useAuthStore } from "@/lib/stores/auth-store";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+/**
+ * Adendo "Deploy em produção: Vercel + Railway + Cloudflare" (09/09/2026)
+ * — sempre um caminho RELATIVO (nunca uma URL absoluta cross-origin). O
+ * navegador só fala com a própria origem do frontend; o `rewrites()` em
+ * next.config.ts é quem repassa `/api/*` para o backend de verdade (via
+ * `API_PROXY_TARGET`, variável de ambiente só do servidor Next.js — o
+ * navegador nunca vê essa URL). É isto que faz o cookie de sessão
+ * `httpOnly` parecer "mesma origem" mesmo com frontend (Vercel) e backend
+ * (Railway) sendo domínios diferentes de verdade.
+ */
+const API_URL = "/api";
+const CSRF_COOKIE_NAME = "XSRF-TOKEN";
+const CSRF_HEADER_NAME = "X-CSRF-Token";
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export class ApiError extends Error {
   constructor(
@@ -20,63 +33,51 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   skipAuth?: boolean;
 }
 
+/** Lê o cookie legível `XSRF-TOKEN` (a API o grava no login/refresh) para ecoar no header — ver CsrfGuard no backend. */
+function readCsrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE_NAME}=([^;]*)`));
+  return match ? decodeURIComponent(match[1] ?? "") : null;
+}
+
 let refreshPromise: Promise<boolean> | null = null;
 
+/**
+ * A sessão vive só em cookies httpOnly — aqui não tocamos em token algum,
+ * mas ainda assim atualizamos o `user` em cache com o que a API acabou de
+ * devolver (nunca o cache antigo do store): é o que faz um vínculo
+ * Analyst feito pelo admin em outra aba aparecer sem precisar de
+ * logout/login manual (adendo "Acesso restrito", item 2), mesmo quando a
+ * atualização acontece via este refresh silencioso em vez do boot do app.
+ */
 async function refreshSession(): Promise<boolean> {
-  const { refreshToken, setSession, clearSession } = useAuthStore.getState();
-  if (!refreshToken) {
-    clearSession();
-    return false;
-  }
+  const csrfToken = readCsrfToken();
   const response = await fetch(`${API_URL}/auth/refresh`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
+    credentials: "include",
+    headers: csrfToken ? { [CSRF_HEADER_NAME]: csrfToken } : undefined,
   });
   if (!response.ok) {
-    clearSession();
+    useAuthStore.getState().clearSession();
     return false;
   }
-  const data = (await response.json()) as {
-    accessToken: string;
-    refreshToken: string;
-    user: SessionUserResponse;
-  };
-  // Sempre usa o `user` que acabou de vir da API (não o cache antigo do
-  // store) — é o que faz um vínculo Analyst feito pelo admin em outra aba
-  // aparecer sem precisar de logout/login manual (adendo "Acesso
-  // restrito", item 2).
-  setSession({
-    accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
-    user: {
-      id: data.user.id,
-      name: data.user.name,
-      email: data.user.email,
-      role: data.user.role,
-      analystId: data.user.analystId,
-    },
-  });
+  const data = (await response.json()) as { user: SessionUser };
+  useAuthStore.getState().setSession(data.user);
   return true;
 }
 
-interface SessionUserResponse {
-  id: string;
-  name: string;
-  email: string;
-  role: "ADMINISTRADOR" | "LIDERANCA" | "ANALISTA";
-  analystId: string | null;
-}
-
 async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
-  const { body, skipAuth, headers, ...rest } = options;
-  const accessToken = useAuthStore.getState().accessToken;
+  const { body, skipAuth, headers, method, ...rest } = options;
+  const csrfToken = readCsrfToken();
+  const isMutating = MUTATING_METHODS.has((method ?? "GET").toUpperCase());
 
   const response = await fetch(`${API_URL}${path}`, {
     ...rest,
+    method,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(accessToken && !skipAuth ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(isMutating && csrfToken ? { [CSRF_HEADER_NAME]: csrfToken } : {}),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -107,10 +108,11 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
 
 /** Upload multipart (ex.: importação de planilha) — sem Content-Type manual, o browser define o boundary. */
 async function postFile<T>(path: string, formData: FormData, isRetry = false): Promise<T> {
-  const accessToken = useAuthStore.getState().accessToken;
+  const csrfToken = readCsrfToken();
   const response = await fetch(`${API_URL}${path}`, {
     method: "POST",
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    credentials: "include",
+    headers: csrfToken ? { [CSRF_HEADER_NAME]: csrfToken } : undefined,
     body: formData,
   });
 
@@ -133,10 +135,7 @@ async function postFile<T>(path: string, formData: FormData, isRetry = false): P
 
 /** Baixa um arquivo autenticado (exportações, item 4) e dispara o save do navegador. */
 async function downloadFile(path: string, filename: string, isRetry = false): Promise<void> {
-  const accessToken = useAuthStore.getState().accessToken;
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-  });
+  const response = await fetch(`${API_URL}${path}`, { credentials: "include" });
 
   if (response.status === 401 && !isRetry) {
     refreshPromise ??= refreshSession().finally(() => {
