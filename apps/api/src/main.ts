@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import cookieParser from "cookie-parser";
@@ -8,10 +9,18 @@ import { AppModule } from "./app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
 
   app.use(helmet());
   app.use(cookieParser());
-  app.enableCors({ credentials: true });
+  // Sessão via cookie httpOnly (adendo "Segurança de sessão", 08/09/2026)
+  // exige `credentials: true` + origem EXPLÍCITA (nunca "*") — cookies não
+  // funcionam entre origens diferentes sem isso. CORS_ORIGIN aponta para o
+  // domínio do frontend em produção; em dev, o padrão já é o :4002 local.
+  app.enableCors({
+    origin: configService.get<string>("CORS_ORIGIN", "http://localhost:4002"),
+    credentials: true,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

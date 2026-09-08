@@ -8,7 +8,15 @@ import { PasswordService } from "./password.service";
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; name: string; email: string; role: string; analystId: string | null };
+  user: SessionUserDto;
+}
+
+export interface SessionUserDto {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  analystId: string | null;
 }
 
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias — mantido em sincronia com JWT_REFRESH_TTL
@@ -76,6 +84,24 @@ export class AuthService {
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /**
+   * GET /auth/me (adendo "Segurança de sessão", item 3) — usado no boot do
+   * SPA para confirmar se a sessão (cookie) ainda é válida e obter os
+   * dados do usuário; o JWT decodificado (`AuthenticatedUser`, via
+   * `@CurrentUser()`) só tem id/role/analystId, não name/email, então
+   * este endpoint busca o registro completo. Também revalida no banco
+   * (ao contrário de confiar cegamente no payload do token) — cobre conta
+   * desativada ou com vínculo de analista alterado desde a emissão do
+   * token de acesso.
+   */
+  async getMe(userId: string): Promise<SessionUserDto> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.active) {
+      throw new UnauthorizedException("Usuário inválido ou inativo.");
+    }
+    return { id: user.id, name: user.name, email: user.email, role: user.role, analystId: user.analystId };
   }
 
   private signAccessToken(payload: JwtPayload): string {

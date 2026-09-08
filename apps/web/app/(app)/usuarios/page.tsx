@@ -80,7 +80,15 @@ export default function UsuariosPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", role: "ANALISTA" as UserRole, analystId: UNLINKED });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    role: "ANALISTA" as UserRole,
+    analystId: UNLINKED,
+    // Vazio = não altera a senha (adendo "Deploy limpo") — permite ao
+    // Administrador redefinir a senha de qualquer usuário, inclusive a
+    // própria, já que ainda não existe um fluxo de "trocar no primeiro login".
+    newPassword: "",
+  });
   const [editError, setEditError] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -107,6 +115,7 @@ export default function UsuariosPage() {
         name: editForm.name,
         role: editForm.role,
         analystId: editForm.role === "ANALISTA" ? (editForm.analystId === UNLINKED ? null : editForm.analystId) : undefined,
+        ...(editForm.newPassword ? { password: editForm.newPassword } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -123,7 +132,7 @@ export default function UsuariosPage() {
 
   function openEdit(u: UserRow) {
     setEditTarget(u);
-    setEditForm({ name: u.name, role: u.role, analystId: u.analystId ?? UNLINKED });
+    setEditForm({ name: u.name, role: u.role, analystId: u.analystId ?? UNLINKED, newPassword: "" });
     setEditError(null);
   }
 
@@ -300,6 +309,20 @@ export default function UsuariosPage() {
                 onChange={(v) => setEditForm((f) => ({ ...f, analystId: v }))}
               />
             )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-new-password">Nova senha</Label>
+              <Input
+                id="edit-new-password"
+                type="password"
+                value={editForm.newPassword}
+                onChange={(e) => setEditForm((f) => ({ ...f, newPassword: e.target.value }))}
+                placeholder="Deixe em branco para não alterar"
+                minLength={8}
+              />
+              <p className="text-xs text-muted-foreground">
+                Use isto para trocar a senha temporária de um usuário recém-criado, ou redefinir a própria senha.
+              </p>
+            </div>
             {editError && <p className="text-sm text-destructive">{editError}</p>}
             <DialogFooter>
               <Button type="submit" disabled={editMutation.isPending}>

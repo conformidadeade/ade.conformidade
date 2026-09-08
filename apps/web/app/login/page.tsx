@@ -12,8 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
   user: {
     id: string;
     name: string;
@@ -37,7 +35,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const data = await api.post<LoginResponse>("/auth/login", { email, password }, { skipAuth: true });
-      setSession(data);
+      setSession(data.user);
       router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível entrar. Tente novamente.");

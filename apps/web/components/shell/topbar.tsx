@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { ThemeToggle } from "./theme-toggle";
@@ -17,7 +18,15 @@ export function Topbar() {
   const user = useAuthStore((s) => s.user);
   const clearSession = useAuthStore((s) => s.clearSession);
 
-  function handleLogout() {
+  async function handleLogout() {
+    // Adendo "Segurança de sessão" — antes só limpava o estado local; agora
+    // precisa chamar a API para revogar o refresh token e limpar os
+    // cookies de verdade, senão o cookie antigo continuaria autenticando.
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      /* mesmo se a chamada falhar (ex.: já sem sessão), segue limpando o estado local. */
+    }
     clearSession();
     router.replace("/login");
   }

@@ -72,6 +72,12 @@ export class UsersService {
       await this.assertAnalystExists(dto.analystId);
     }
 
+    // Troca de senha (adendo "Deploy limpo") — hash calculado antes do
+    // update, mesmo mecanismo usado em create(); nunca logada em texto
+    // puro nem incluída no audit log (select/before/after abaixo nunca
+    // trazem passwordHash).
+    const passwordHash = dto.password ? await this.passwords.hash(dto.password) : undefined;
+
     try {
       const after = await this.prisma.user.update({
         where: { id },
@@ -80,6 +86,7 @@ export class UsersService {
           role: dto.role,
           active: dto.active,
           ...(dto.analystId !== undefined ? { analystId: dto.analystId } : {}),
+          ...(passwordHash !== undefined ? { passwordHash } : {}),
         },
         select: { id: true, name: true, email: true, role: true, active: true, analystId: true },
       });
@@ -89,7 +96,7 @@ export class UsersService {
         entityId: id,
         action: "UPDATE",
         before: { name: before.name, role: before.role, active: before.active, analystId: before.analystId },
-        after,
+        after: { ...after, passwordChanged: passwordHash !== undefined },
       });
       return after;
     } catch (error) {
