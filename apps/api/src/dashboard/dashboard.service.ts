@@ -1,38 +1,46 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { DashboardIndicators } from "@reanalise-erp/types";
+import { DashboardIndicators, ReturnOrigin } from "@reanalise-erp/types";
 import { PrismaService } from "../prisma/prisma.service";
 
 export interface DashboardFilters {
   analystId?: string;
   clientId?: string;
   mediaChannelId?: string;
+  /** Adendo "Origem da devolução" — só se aplica aos indicadores baseados
+   * em ReanalysisReturn (devoluções, por cliente/meio/origem); não recorta
+   * combinationsInConstruction/combinationsReleased/releasesTotal, que não
+   * têm origem (não são devoluções). */
+  origin?: ReturnOrigin;
 }
 
+const ORIGINS: ReturnOrigin[] = ["REANALISE", "CLIENTE"];
+
 /**
- * Indicadores gerenciais (item 20). Todos os indicadores "do mês" usam o
- * mesmo mês/ano do parâmetro — inclusive "liberações/devoluções por
- * cliente/meio", para manter o dashboard coerente com um único período
- * (ver docs/DECISIONS.md sobre essa escolha, que é operacional, não regra
- * de negócio). "Devoluções no mês" aqui é o contador de RELATÓRIO do item
- * 10 (toda devolução, qualquer estado) — não o contador interno da regra
- * de retorno do item 8.
+ * Indicadores gerenciais (item 20). Adendo "Dashboard: mostrar totais de
+ * todos os períodos" (08/09/2026) — decisão confirmada com a liderança:
+ * removido o escopo mensal. Todo indicador/gráfico aqui é um TOTAL
+ * ACUMULADO desde sempre, não um filtro de período (não há seletor de mês
+ * — o comportamento é sempre "todos os períodos"). "Devoluções" aqui é o
+ * contador de RELATÓRIO do item 10 (toda devolução, qualquer estado) — não
+ * o contador interno da regra de retorno do item 8.
  *
- * Filtros de Analista/Cliente/Meio (adendo Fase 2, item 3): recortam a
- * fatia de dados dentro do mesmo escopo mensal — não mudam o período.
+ * IMPORTANTE: isso é só sobre a apresentação deste dashboard gerencial.
+ * `packages/release-engine` e seu `monthlyReturnCount`/`monthKey` (regra
+ * "2 devoluções no mês" que retorna uma combinação liberada à reanálise)
+ * são business logic completamente separada e não foram tocados por este
+ * adendo — nem o Mapa de Liberação, que continua com seu próprio filtro de
+ * mês/ano para a coluna "Devoluções no mês" (ver `CombinationsService`).
+ *
+ * Filtros de Analista/Cliente/Meio/Origem (adendos Fase 2 item 3 e "Origem
+ * da devolução"): continuam recortando os dados normalmente — só a
+ * dimensão de tempo foi removida.
  */
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getIndicators(month: number | undefined, year: number | undefined, filters: DashboardFilters = {}): Promise<DashboardIndicators> {
-    const now = new Date();
-    const m = month ?? now.getMonth() + 1;
-    const y = year ?? now.getFullYear();
-    const monthKey = `${y}-${String(m).padStart(2, "0")}`;
-    const rangeStart = new Date(y, m - 1, 1);
-    const rangeEnd = new Date(y, m, 1);
-
+  async getIndicators(filters: DashboardFilters = {}): Promise<DashboardIndicators> {
     const combinationWhere: Prisma.AnalystClientMediaWhereInput = {
       analystId: filters.analystId,
       clientId: filters.clientId,
@@ -52,17 +60,16 @@ export class DashboardService {
       this.prisma.analystClientMedia.count({ where: { status: "EM_CONSTRUCAO", ...combinationWhere } }),
       this.prisma.analystClientMedia.count({ where: { status: "LIBERADO", ...combinationWhere } }),
       this.prisma.reanalysisReturn.findMany({
-        where: { monthKey, combination: combinationWhere },
+        where: { origin: filters.origin, combination: combinationWhere },
         include: { combination: { include: { client: true, mediaChannel: true } } },
       }),
       this.prisma.reanalysisEvent.findMany({
-        where: { type: "RELEASED", occurredAt: { gte: rangeStart, lt: rangeEnd }, combination: combinationWhere },
+        where: { type: "RELEASED", combination: combinationWhere },
         include: { combination: { include: { client: true, mediaChannel: true } } },
       }),
       this.prisma.reanalysisEvent.findMany({
         where: {
           type: { in: ["AUTO_RETURN", "MANUAL_RETURN"] },
-          occurredAt: { gte: rangeStart, lt: rangeEnd },
           combination: combinationWhere,
         },
       }),
@@ -98,17 +105,26 @@ export class DashboardService {
       });
     }
 
+    // Adendo "Origem da devolução", item 5 — sempre as duas origens
+    // presentes (mesmo com contagem 0), para o indicador não "sumir" da
+    // tela quando uma origem não teve nenhuma devolução.
+    const returnsByOrigin = new Map<ReturnOrigin, number>(ORIGINS.map((o) => [o, 0]));
+    for (const r of returns) {
+      returnsByOrigin.set(r.origin as ReturnOrigin, (returnsByOrigin.get(r.origin as ReturnOrigin) ?? 0) + 1);
+    }
+
     return {
       totalActiveAnalysts,
       combinationsInConstruction,
       combinationsReleased,
-      returnsToReanalysisThisMonth: returnEvents.length,
-      reportedReturnsThisMonth: returns.length,
-      releasesThisMonth: releaseEvents.length,
+      returnsToReanalysisTotal: returnEvents.length,
+      reportedReturnsTotal: returns.length,
+      releasesTotal: releaseEvents.length,
       releasesByClient: [...releasesByClient.values()].sort((a, b) => b.count - a.count),
       releasesByMediaChannel: [...releasesByMediaChannel.values()].sort((a, b) => b.count - a.count),
       returnsByClient: [...byClient.values()].sort((a, b) => b.count - a.count),
       returnsByMediaChannel: [...byMediaChannel.values()].sort((a, b) => b.count - a.count),
+      reportedReturnsByOrigin: ORIGINS.map((origin) => ({ origin, count: returnsByOrigin.get(origin) ?? 0 })),
     };
   }
 

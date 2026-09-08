@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { DashboardIndicators } from "@reanalise-erp/types";
+import type { DashboardIndicators, ReturnOrigin } from "@reanalise-erp/types";
 import { api } from "@/lib/api/client";
 import { useAnalysts, useClients, useMediaChannels } from "@/lib/hooks/use-catalog";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -13,7 +13,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-const monthLabel = new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 const ALL = "__all__";
 
 export default function DashboardPage() {
@@ -24,6 +23,7 @@ export default function DashboardPage() {
   const [analystId, setAnalystId] = useState(ALL);
   const [clientId, setClientId] = useState(ALL);
   const [mediaChannelId, setMediaChannelId] = useState(ALL);
+  const [origin, setOrigin] = useState(ALL);
 
   const { data: analysts } = useAnalysts();
   const { data: clients } = useClients();
@@ -36,8 +36,9 @@ export default function DashboardPage() {
     if (!isAnalista && analystId !== ALL) params.set("analystId", analystId);
     if (clientId !== ALL) params.set("clientId", clientId);
     if (mediaChannelId !== ALL) params.set("mediaChannelId", mediaChannelId);
+    if (origin !== ALL) params.set("origin", origin);
     return params.toString();
-  }, [analystId, clientId, mediaChannelId, isAnalista]);
+  }, [analystId, clientId, mediaChannelId, origin, isAnalista]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", query],
@@ -45,14 +46,15 @@ export default function DashboardPage() {
     enabled: !isAnalista || !!ownAnalystId,
   });
 
-  const hasFilter = (!isAnalista && analystId !== ALL) || clientId !== ALL || mediaChannelId !== ALL;
+  const hasFilter =
+    (!isAnalista && analystId !== ALL) || clientId !== ALL || mediaChannelId !== ALL || origin !== ALL;
 
   if (isAnalista && !ownAnalystId) {
     return (
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground capitalize">{monthLabel}</p>
+          <p className="text-sm text-muted-foreground">Indicadores acumulados desde o início do uso do sistema.</p>
         </div>
         <AnalystNotLinked />
       </div>
@@ -63,11 +65,11 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground capitalize">{monthLabel}</p>
+        <p className="text-sm text-muted-foreground">Indicadores acumulados desde o início do uso do sistema.</p>
       </div>
 
       <Card>
-        <CardContent className={cn("pt-5 grid grid-cols-1 gap-3", isAnalista ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
+        <CardContent className={cn("pt-5 grid grid-cols-1 gap-3", isAnalista ? "sm:grid-cols-3" : "sm:grid-cols-4")}>
           {!isAnalista && (
             <Select value={analystId} onValueChange={setAnalystId}>
               <SelectTrigger>
@@ -109,6 +111,16 @@ export default function DashboardPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={origin} onValueChange={setOrigin}>
+            <SelectTrigger>
+              <SelectValue placeholder="Origem" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todas as origens</SelectItem>
+              <SelectItem value={"REANALISE" satisfies ReturnOrigin}>Reanálise</SelectItem>
+              <SelectItem value={"CLIENTE" satisfies ReturnOrigin}>Cliente</SelectItem>
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
@@ -118,7 +130,7 @@ export default function DashboardPage() {
         <>
           {hasFilter && (
             <p className="text-xs text-muted-foreground -mt-2">
-              Indicadores recalculados para o recorte selecionado — o período continua sendo o mês corrente.
+              Indicadores recalculados para o recorte selecionado.
             </p>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -133,11 +145,25 @@ export default function DashboardPage() {
               label={isAnalista ? "Minhas combinações liberadas" : "Combinações liberadas"}
               value={data.combinationsReleased}
             />
-            <IndicatorCard label={isAnalista ? "Minhas liberações no mês" : "Liberações no mês"} value={data.releasesThisMonth} />
-            <IndicatorCard label={isAnalista ? "Meus retornos no mês" : "Retornos no mês"} value={data.returnsToReanalysisThisMonth} />
             <IndicatorCard
-              label={isAnalista ? "Minhas devoluções no mês" : "Devoluções no mês"}
-              value={data.reportedReturnsThisMonth}
+              label={isAnalista ? "Minhas liberações" : "Liberações"}
+              value={data.releasesTotal}
+            />
+            <IndicatorCard
+              label={isAnalista ? "Meus retornos à reanálise" : "Retornos à reanálise"}
+              value={data.returnsToReanalysisTotal}
+            />
+            <IndicatorCard
+              label={isAnalista ? "Minhas devoluções" : "Devoluções"}
+              value={data.reportedReturnsTotal}
+            />
+            <IndicatorCard
+              label={isAnalista ? "Minhas devoluções — Reanálise" : "Devoluções — Reanálise"}
+              value={data.reportedReturnsByOrigin.find((o) => o.origin === "REANALISE")?.count ?? 0}
+            />
+            <IndicatorCard
+              label={isAnalista ? "Minhas devoluções — Cliente" : "Devoluções — Cliente"}
+              value={data.reportedReturnsByOrigin.find((o) => o.origin === "CLIENTE")?.count ?? 0}
             />
           </div>
 
@@ -145,18 +171,22 @@ export default function DashboardPage() {
             <ChartCard
               title={isAnalista ? "Minhas liberações por cliente" : "Liberações por cliente"}
               data={data.releasesByClient.map((r) => ({ name: r.clientName, value: r.count }))}
+              emptyLabel="Nenhuma liberação registrada para este recorte."
             />
             <ChartCard
               title={isAnalista ? "Minhas devoluções por cliente" : "Devoluções por cliente"}
               data={data.returnsByClient.map((r) => ({ name: r.clientName, value: r.count }))}
+              emptyLabel="Nenhuma devolução registrada para este recorte."
             />
             <ChartCard
               title={isAnalista ? "Minhas liberações por meio" : "Liberações por meio"}
               data={data.releasesByMediaChannel.map((r) => ({ name: r.mediaChannelName, value: r.count }))}
+              emptyLabel="Nenhuma liberação registrada para este recorte."
             />
             <ChartCard
               title={isAnalista ? "Minhas devoluções por meio" : "Devoluções por meio"}
               data={data.returnsByMediaChannel.map((r) => ({ name: r.mediaChannelName, value: r.count }))}
+              emptyLabel="Nenhuma devolução registrada para este recorte."
             />
           </div>
         </>
@@ -165,7 +195,15 @@ export default function DashboardPage() {
   );
 }
 
-function ChartCard({ title, data }: { title: string; data: { name: string; value: number }[] }) {
+function ChartCard({
+  title,
+  data,
+  emptyLabel,
+}: {
+  title: string;
+  data: { name: string; value: number }[];
+  emptyLabel: string;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -173,7 +211,7 @@ function ChartCard({ title, data }: { title: string; data: { name: string; value
       </CardHeader>
       <CardContent className="h-64">
         {data.length === 0 ? (
-          <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados no período.</div>
+          <div className="h-full grid place-items-center text-sm text-muted-foreground text-center px-4">{emptyLabel}</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} layout="vertical" margin={{ left: 8 }}>
