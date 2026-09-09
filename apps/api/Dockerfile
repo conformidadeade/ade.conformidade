@@ -34,6 +34,13 @@
 # primeiro deploy no Railway, corrigido depois).
 
 FROM node:22-slim AS base
+# O motor do Prisma (schema-engine) é um binário nativo que precisa de
+# libssl — node:22-slim (Debian) não vem com isso instalado por padrão.
+# Sem isso, "prisma migrate deploy" falha em runtime com "Schema engine
+# error" (visto de verdade num deploy real no Railway). Instalado aqui no
+# estágio base (build E runtime) para o binário gerado no build já ser
+# compatível com o ambiente onde ele vai rodar.
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /repo
 
