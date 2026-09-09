@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module";
 import { CsrfGuard } from "./auth/guards/csrf.guard";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -16,6 +17,13 @@ import { UsersModule } from "./users/users.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Global só para registro no DI — NÃO aplicado a toda rota (não é
+    // APP_GUARD). Adendo "Confirmação de e-mail e recuperação de senha",
+    // item 3: rate limiting só nos dois endpoints públicos sensíveis
+    // (forgot-password, resend-invite), via @UseGuards(ThrottlerGuard)
+    // local em cada um — não globalmente, para não afetar rotas pesadas
+    // já existentes (ex.: importação de planilha).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }]),
     PrismaModule,
     CommonModule,
     AuthModule,

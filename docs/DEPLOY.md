@@ -120,6 +120,8 @@ próprio `Dockerfile` e `docs/DECISIONS.md` para o diagnóstico completo de cada
 | `COOKIE_DOMAIN` | `.{seu-domínio-raiz}` (**com ponto na frente**, ex.: `.adeonline.com.br`) — deixe vazio enquanto só existir a URL temporária `.vercel.app`/`.up.railway.app` (que não compartilham domínio raiz) | isso é o que faz a sessão funcionar entre `www` e `api` — ver seção de arquitetura acima |
 | `ADMIN_EMAIL` | e-mail real do primeiro administrador | só lido pelo `prisma:seed` (passo 1.4), não pela API em si |
 | `ADMIN_PASSWORD` | *(deixe indefinido)* | sem definir, o seed gera uma senha temporária forte sozinho e a imprime uma vez nos logs — ver adendo "Deploy limpo" em `docs/DECISIONS.md` |
+| `RESEND_API_KEY` | chave de API gerada no painel do Resend | ver seção 1.6 — convite de conta nova e "esqueci minha senha" (adendo "Confirmação de e-mail...") |
+| `EMAIL_FROM` | `naoresponda@<seu-domínio>` (ou outro endereço do domínio verificado) | precisa ser um endereço do domínio verificado no Resend (seção 1.6), não precisa ser uma caixa real |
 
 `.env.example` em `apps/api` documenta as mesmas variáveis com comentários — mantenha
 os dois em sincronia se adicionar alguma nova.
@@ -155,6 +157,43 @@ Em **Settings → Networking → Custom Domain**, digite `api.<seu-domínio>` e 
 porta (a mesma do domínio automático, geralmente `8080`). O Railway devolve **dois
 registros DNS obrigatórios** — um `CNAME` e um `TXT` (verificação de propriedade; sem
 o TXT, o CNAME sozinho ainda dá 404). Configure os dois no Cloudflare (seção 3).
+
+### 1.6. E-mail transacional (Resend) — convite de conta e recuperação de senha
+
+Adendo "Confirmação de e-mail e recuperação de senha" (09/09/2026): contas novas
+criadas na tela Usuários nascem sem senha e recebem um e-mail de convite; existe
+também um "esqueci minha senha" self-service. Os dois usam o
+[Resend](https://resend.com) (free tier, 3000 e-mails/mês — suficiente para o volume
+esperado), enviando do domínio próprio `<seu-domínio>` — **não** da caixa corporativa
+Microsoft 365 (`conformidade@calia.com.br`), justamente para não depender de acesso
+ao admin de e-mail daquela organização: o domínio novo já está sob nosso próprio
+Cloudflare, então verificar um remetente nele é autocontido.
+
+1. Crie uma conta em [resend.com](https://resend.com) (grátis).
+2. **Domains → Add Domain** → digite `<seu-domínio>` (o domínio raiz, não um
+   subdomínio) → Resend gera um conjunto de registros DNS de verificação
+   (tipicamente: um ou mais `TXT` para SPF/verificação de propriedade, um `CNAME` ou
+   `TXT` para DKIM, e opcionalmente um `MX`/`TXT` para DMARC) — **os valores exatos
+   são gerados na hora pelo painel do Resend, não hardcode aqui**; copie-os
+   diretamente da tela "Domains → \<seu-domínio\> → DNS Records".
+3. Adicione esses registros no **mesmo Cloudflare** que já hospeda o DNS do sistema
+   (seção 3 acima) — igual aos registros do Vercel/Railway, todos em modo **"DNS
+   only"** (nuvem cinza), já que são registros de verificação/roteamento de e-mail,
+   não tráfego HTTP a proxyar.
+4. Volte ao painel do Resend e clique **Verify** — pode levar de minutos a algumas
+   horas para propagar, igual qualquer DNS.
+5. **API Keys → Create API Key** → copie o valor (só aparece uma vez) → configure
+   como `RESEND_API_KEY` no Railway (tabela da seção 1.3).
+6. Configure `EMAIL_FROM` no Railway com um endereço do domínio recém-verificado
+   (ex.: `naoresponda@<seu-domínio>` ou `sistema@<seu-domínio>`) — não precisa ser uma
+   caixa de e-mail real, ninguém precisa ler respostas enviadas para ele; é só o
+   remetente que aparece nos e-mails de convite/recuperação de senha.
+
+**Sem `RESEND_API_KEY`/`EMAIL_FROM` configurados** (ex.: antes deste passo, ou em dev
+local), o `EmailService` não quebra nada — ele só **loga** o e-mail que enviaria
+(destinatário, assunto, link) em vez de chamar a rede, então o resto do sistema
+continua funcionando normalmente enquanto o Resend não estiver configurado; só o
+envio de verdade fica pendente.
 
 ## 2. Frontend na Vercel
 
@@ -242,7 +281,8 @@ registrada em `docs/DECISIONS.md`).
 
 **Railway (API):** `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_ACCESS_TTL`, `CORS_ORIGIN`,
 `COOKIE_SECURE=true`, `COOKIE_DOMAIN` (`.{domínio-raiz}` em produção, vazio se só
-existir a URL temporária do Railway), `ADMIN_EMAIL` (só para o seed manual).
+existir a URL temporária do Railway), `ADMIN_EMAIL` (só para o seed manual),
+`RESEND_API_KEY`, `EMAIL_FROM` (seção 1.6 — convite/recuperação de senha por e-mail).
 
 **Vercel (web):** `NEXT_PUBLIC_API_URL`.
 

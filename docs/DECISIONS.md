@@ -152,6 +152,68 @@ substituído pela revisão acima; itens 2 em diante continuam válidos):
    ponta a ponta — recomendado rodar `docker build` localmente (se disponível) ou
    validar direto no primeiro deploy do Railway antes de confiar cegamente.
 
+## Adendo "Confirmação de e-mail e recuperação de senha" — confirmado e implementado (09/09/2026)
+
+Contas novas criadas em Usuários nascem sem senha (`User.passwordHash` agora
+nulável); o sistema envia um convite por e-mail para a própria pessoa confirmar o
+e-mail e definir a senha — o Administrador nunca chega a saber a senha de ninguém
+(decisão já confirmada antes de implementar). Existe também recuperação de senha
+self-service ("esqueci minha senha"). E-mails via Resend (free tier), enviados do
+domínio próprio `adeonline.com.br` — não da caixa corporativa Microsoft 365 — para
+não depender de acesso ao admin de e-mail daquela organização. Ver `docs/DEPLOY.md`
+seção 1.6 para o passo a passo de verificação de domínio no Resend.
+
+**Escopo explicitamente preservado, sem alteração:** o `prisma:seed` (bootstrap do
+primeiro Administrador) continua exatamente como estava — senha temporária impressa
+no terminal, sem depender de e-mail algum (o sistema não tem nenhum e-mail
+configurado nesse momento do deploy). Este adendo vale só para contas criadas
+DEPOIS, pela tela de Usuários. A troca manual de senha pelo Administrador (tela
+Usuários → Editar → Nova senha) também foi mantida como caminho alternativo — útil
+se alguém perder acesso ao próprio e-mail.
+
+**Suposições assumidas ao implementar (sinalizadas aqui, como pedido — não
+decididas silenciosamente na dúvida):**
+
+1. **Backfill de `emailConfirmedAt` nas contas já existentes:** a migration marca
+   `emailConfirmedAt = createdAt` para toda conta que já tinha `passwordHash`
+   definido (ou seja, toda conta criada antes deste adendo) — nenhuma conta
+   pré-existente é obrigada a reconfirmar o e-mail. Verificado contra os 13 usuários
+   reais do banco local (incluindo `admin@reanalise.local`) antes de considerar a
+   migration correta.
+2. **URL do frontend usada nos links dos e-mails:** reaproveita a variável
+   `CORS_ORIGIN` já existente (é exatamente essa URL) em vez de criar uma variável
+   nova só para isso — menos uma env var para manter sincronizada entre os
+   ambientes.
+3. **Fallback de e-mail em dev/sem `RESEND_API_KEY`:** em vez de falhar, o
+   `EmailService` loga o e-mail que enviaria (destinatário, assunto, link) e
+   retorna normalmente — permite rodar o fluxo completo localmente (inclusive os
+   testes de integração) sem depender de credencial nenhuma do Resend.
+4. **Throttling nomeado no requisito:** o pedido citou por nome dois endpoints a
+   limitar (`forgot-password` e o reenvio de convite) — `reset-password` (troca de
+   senha com token já em mãos) **não** foi colocado atrás de rate limiting, por não
+   ter sido um dos dois citados e por já depender de um token de posse (não é um
+   alvo de enumeração/spam do mesmo jeito que os outros dois). Se a liderança
+   preferir limitar também esse, é uma mudança pequena e isolada
+   (`@UseGuards(ThrottlerGuard)` + `@Throttle(...)` no `AuthController`).
+5. **Falha no envio do e-mail de convite não desfaz a criação da conta** — a conta
+   já foi criada e "Reenviar convite" cobre o caso de a primeira tentativa de envio
+   falhar (ex.: Resend fora do ar); a UI mostra feedback do resultado do reenvio.
+
+**Cobertura de teste** (unitária + integração real via `supertest`, sem
+`overrideGuard` nas suítes de auth): conta criada nasce sem senha e dispara convite
+(mockado); login bloqueado com mensagem distinta antes da confirmação; token de
+convite válido define senha e confirma e-mail, login passa a funcionar, e o mesmo
+token não pode ser reaproveitado; token expirado ou já usado dá erro claro sem
+alterar dado nenhum; reemitir invalida o token anterior (o antigo para de
+funcionar, só o novo funciona); "esqueci minha senha" com e-mail existente emite
+token e "envia" e-mail (mock); com e-mail inexistente, a API responde a MESMA
+mensagem genérica e nenhum e-mail é realmente enviado (só observável dentro do
+teste, nunca na resposta HTTP); redefinição de senha com token válido revoga todas
+as sessões ativas (refresh tokens) do usuário; rate limiting testado nos dois
+endpoints citados, em suítes isoladas com sua própria instância de app (o
+`ThrottlerGuard` padrão rastreia por IP da requisição — reaproveitar a mesma
+instância de app dos outros testes contaminaria a contagem entre eles).
+
 ## Em aberto — não implementar sem confirmar (item 28)
 
 Sinalizadas no requisito original e ainda pendentes de decisão da liderança. Cada uma será revisitada quando a funcionalidade correspondente for implementada, com uma proposta explícita antes do código, não assumida silenciosamente:

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus } from "lucide-react";
+import { Mail, Pencil, Plus } from "lucide-react";
 import type { UserRole } from "@reanalise-erp/types";
 import { ApiError, api } from "@/lib/api/client";
 import { useAnalysts } from "@/lib/hooks/use-catalog";
@@ -29,6 +29,12 @@ interface UserRow {
   role: UserRole;
   active: boolean;
   analystId: string | null;
+  /**
+   * `null` = conta convidada, ainda sem senha (adendo "Confirmação de
+   * e-mail e recuperação de senha", 09/09/2026) — o usuário ainda não
+   * clicou no link do e-mail de convite.
+   */
+  emailConfirmedAt: string | null;
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -73,7 +79,6 @@ export default function UsuariosPage() {
   const [createForm, setCreateForm] = useState({
     name: "",
     email: "",
-    password: "",
     role: "ANALISTA" as UserRole,
     analystId: UNLINKED,
   });
@@ -96,17 +101,25 @@ export default function UsuariosPage() {
       api.post("/users", {
         name: createForm.name,
         email: createForm.email,
-        password: createForm.password,
         role: createForm.role,
         analystId: createForm.role === "ANALISTA" && createForm.analystId !== UNLINKED ? createForm.analystId : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setCreateOpen(false);
-      setCreateForm({ name: "", email: "", password: "", role: "ANALISTA", analystId: UNLINKED });
+      setCreateForm({ name: "", email: "", role: "ANALISTA", analystId: UNLINKED });
       setCreateError(null);
     },
     onError: (err) => setCreateError(err instanceof ApiError ? err.message : "Erro ao criar usuário."),
+  });
+
+  /** Botão "Reenviar convite" (adendo "Confirmação de e-mail...", item 1). */
+  const [resendFeedback, setResendFeedback] = useState<{ id: string; message: string } | null>(null);
+  const resendInviteMutation = useMutation({
+    mutationFn: (id: string) => api.post<void>(`/users/${id}/resend-invite`),
+    onSuccess: (_data, id) => setResendFeedback({ id, message: "Convite reenviado." }),
+    onError: (err, id) =>
+      setResendFeedback({ id, message: err instanceof ApiError ? err.message : "Erro ao reenviar convite." }),
   });
 
   const editMutation = useMutation({
@@ -181,17 +194,6 @@ export default function UsuariosPage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="password">Senha provisória</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  minLength={8}
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
                 <Label>Perfil</Label>
                 <Select value={createForm.role} onValueChange={(v) => setCreateForm((f) => ({ ...f, role: v as UserRole }))}>
                   <SelectTrigger>
@@ -210,6 +212,10 @@ export default function UsuariosPage() {
                   onChange={(v) => setCreateForm((f) => ({ ...f, analystId: v }))}
                 />
               )}
+              <p className="text-xs text-muted-foreground">
+                Sem senha por aqui: assim que o usuário for criado, um e-mail de convite é enviado para que a
+                própria pessoa confirme o e-mail e defina a senha.
+              </p>
               {createError && <p className="text-sm text-destructive">{createError}</p>}
               <DialogFooter>
                 <Button type="submit" disabled={createMutation.isPending}>
@@ -245,21 +251,40 @@ export default function UsuariosPage() {
               <TableCell>{u.email}</TableCell>
               <TableCell>{ROLE_LABELS[u.role]}</TableCell>
               <TableCell>
-                <Badge variant={u.active ? "success" : "outline"}>{u.active ? "Ativo" : "Inativo"}</Badge>
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge variant={u.active ? "success" : "outline"}>{u.active ? "Ativo" : "Inativo"}</Badge>
+                  {!u.emailConfirmedAt && <Badge variant="outline">Convite pendente</Badge>}
+                </div>
               </TableCell>
               <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(u)}>
-                    <Pencil className="size-4" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleActive.mutate({ id: u.id, active: !u.active })}
-                  >
-                    {u.active ? "Desativar" : "Reativar"}
-                  </Button>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openEdit(u)}>
+                      <Pencil className="size-4" />
+                      Editar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleActive.mutate({ id: u.id, active: !u.active })}
+                    >
+                      {u.active ? "Desativar" : "Reativar"}
+                    </Button>
+                    {!u.emailConfirmedAt && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={resendInviteMutation.isPending}
+                        onClick={() => resendInviteMutation.mutate(u.id)}
+                      >
+                        <Mail className="size-4" />
+                        Reenviar convite
+                      </Button>
+                    )}
+                  </div>
+                  {resendFeedback?.id === u.id && (
+                    <p className="text-xs text-muted-foreground">{resendFeedback.message}</p>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
@@ -320,7 +345,8 @@ export default function UsuariosPage() {
                 minLength={8}
               />
               <p className="text-xs text-muted-foreground">
-                Use isto para trocar a senha temporária de um usuário recém-criado, ou redefinir a própria senha.
+                Caminho manual alternativo ao convite por e-mail (ex.: usuário perdeu acesso ao e-mail) — define a
+                senha na hora e confirma o e-mail automaticamente, sem precisar do link.
               </p>
             </div>
             {editError && <p className="text-sm text-destructive">{editError}</p>}

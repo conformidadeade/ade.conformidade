@@ -36,7 +36,20 @@ model User {
   id           String    @id @default(uuid())
   name         String
   email        String    @unique
-  passwordHash String
+  /// Nulo = conta convidada, ainda sem senha definida (adendo "Confirmação
+  /// de e-mail e recuperação de senha", 09/09/2026) — login é bloqueado
+  /// enquanto for nulo (ver AuthService.login). O bootstrap do
+  /// Administrador inicial (prisma:seed) continua criando a senha na hora,
+  /// nunca fica nulo para essa conta.
+  passwordHash String?
+  /// Quando o e-mail foi confirmado pela primeira vez — pelo fluxo de
+  /// convite (self-service) ou por um Administrador definindo a senha
+  /// manualmente (Usuários > Editar > Nova senha). Nulo só entre a
+  /// criação da conta e a confirmação. Contas que já existiam antes deste
+  /// adendo foram migradas com este campo = createdAt (ver migration) —
+  /// suposição sinalizada, não re-exige confirmação retroativa de quem já
+  /// tinha login funcionando.
+  emailConfirmedAt DateTime?
   role         UserRole
   active       Boolean   @default(true)
   lastLoginAt  DateTime?
@@ -49,6 +62,7 @@ model User {
   analyst   Analyst? @relation(fields: [analystId], references: [id], onDelete: SetNull)
 
   refreshTokens       RefreshToken[]
+  authTokens           AuthToken[]
   auditLogs            AuditLog[]
   guidelinesCreated    Guideline[]          @relation("GuidelineCreatedBy")
   processesRecorded    AnalyzedProcess[]    @relation("ProcessRecordedBy")
@@ -71,6 +85,33 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+enum AuthTokenType {
+  INVITE
+  PASSWORD_RESET
+}
+
+/// Token de uso único enviado por e-mail (adendo "Confirmação de e-mail e
+/// recuperação de senha", 09/09/2026) — mesmo padrão do RefreshToken
+/// (hash armazenado, nunca o valor puro; expiração; e aqui também
+/// `usedAt`, já que um convite/reset só pode ser consumido uma vez).
+/// INVITE: primeira definição de senha de uma conta nova (48h).
+/// PASSWORD_RESET: recuperação de senha self-service (1h).
+model AuthToken {
+  id        String        @id @default(uuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([tokenHash])
+  @@map("auth_tokens")
 }
 
 /// Log de auditoria genérico — append-only — para CRUD de cadastros,

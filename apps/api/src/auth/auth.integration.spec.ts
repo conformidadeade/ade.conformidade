@@ -4,9 +4,12 @@ import { APP_GUARD } from "@nestjs/core";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { Test } from "@nestjs/testing";
+import { ThrottlerModule } from "@nestjs/throttler";
 import cookieParser from "cookie-parser";
 import request from "supertest";
+import { EmailService } from "../email/email.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuthTokenService } from "./auth-token.service";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, CsrfGuard } from "./guards/csrf.guard";
@@ -38,6 +41,7 @@ class TestMutateController {
  */
 describe("Sessão via cookie httpOnly + CSRF (integração)", () => {
   let app: INestApplication;
+  let authTokenService: AuthTokenService;
   const passwords = new PasswordService();
 
   const PLAIN_PASSWORD = "senha-de-teste-123";
@@ -53,10 +57,30 @@ describe("Sessão via cookie httpOnly + CSRF (integração)", () => {
       active: true,
       analystId: null,
       lastLoginAt: null as Date | null,
+      emailConfirmedAt: new Date("2026-01-01") as Date | null,
+    },
+    {
+      id: "u2",
+      name: "Convidado Pendente",
+      email: "convidado@teste.local",
+      passwordHash: null as string | null,
+      role: "LIDERANCA",
+      active: true,
+      analystId: null,
+      lastLoginAt: null as Date | null,
+      emailConfirmedAt: null as Date | null,
     },
   ];
   const refreshTokens: { id: string; userId: string; tokenHash: string; revokedAt: Date | null; expiresAt: Date }[] =
     [];
+  const authTokens: {
+    id: string;
+    userId: string;
+    type: string;
+    tokenHash: string;
+    expiresAt: Date;
+    usedAt: Date | null;
+  }[] = [];
 
   const fakePrisma = {
     user: {
@@ -85,17 +109,61 @@ describe("Sessão via cookie httpOnly + CSRF (integração)", () => {
         Object.assign(r, data);
         return r;
       }),
+      // Usado tanto por logout (filtra por tokenHash) quanto por
+      // resetPassword (filtra por userId, revogando TODAS as sessões
+      // ativas — adendo "Confirmação de e-mail...", item 2).
       updateMany: jest.fn(async ({ where, data }: any) => {
         let count = 0;
         for (const r of refreshTokens) {
-          if (r.tokenHash === where.tokenHash && r.revokedAt === null) {
-            Object.assign(r, data);
+          if (where.revokedAt === null && r.revokedAt !== null) continue;
+          if (where.tokenHash !== undefined && r.tokenHash !== where.tokenHash) continue;
+          if (where.userId !== undefined && r.userId !== where.userId) continue;
+          Object.assign(r, data);
+          count++;
+        }
+        return { count };
+      }),
+    },
+    authToken: {
+      create: jest.fn(async ({ data }: any) => {
+        const row = { id: `at-${authTokens.length + 1}`, usedAt: null, ...data };
+        authTokens.push(row);
+        return row;
+      }),
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        let count = 0;
+        for (const t of authTokens) {
+          if (t.userId === where.userId && t.type === where.type && t.usedAt === where.usedAt) {
+            Object.assign(t, data);
             count++;
           }
         }
         return { count };
       }),
+      findFirst: jest.fn(async ({ where }: any) => {
+        return (
+          authTokens.find(
+            (t) =>
+              t.tokenHash === where.tokenHash &&
+              t.type === where.type &&
+              t.usedAt === where.usedAt &&
+              t.expiresAt > new Date(),
+          ) ?? null
+        );
+      }),
+      update: jest.fn(async ({ where, data }: any) => {
+        const t = authTokens.find((x) => x.id === where.id)!;
+        Object.assign(t, data);
+        return t;
+      }),
     },
+    $transaction: jest.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+  };
+
+  /** Espião de e-mail — substitui o EmailService real para não bater na rede e permitir assert de "foi enviado". */
+  const emailSpy = {
+    sendInviteEmail: jest.fn(async (_to: string, _name: string, _link: string) => undefined),
+    sendPasswordResetEmail: jest.fn(async (_to: string, _name: string, _link: string) => undefined),
   };
 
   beforeAll(async () => {
@@ -117,11 +185,17 @@ describe("Sessão via cookie httpOnly + CSRF (integração)", () => {
         }),
         PassportModule,
         JwtModule.register({}),
+        // Rate limiting real (adendo "Confirmação de e-mail e recuperação
+        // de senha", item 3) — mesma config do AppModule, para o teste de
+        // throttling em forgot-password exercitar o guard de verdade.
+        ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }]),
       ],
       controllers: [AuthController, TestMutateController],
       providers: [
         AuthService,
         PasswordService,
+        AuthTokenService,
+        { provide: EmailService, useValue: emailSpy },
         JwtStrategy,
         JwtAuthGuard,
         { provide: PrismaService, useValue: fakePrisma },
@@ -132,6 +206,7 @@ describe("Sessão via cookie httpOnly + CSRF (integração)", () => {
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
     await app.init();
+    authTokenService = moduleRef.get(AuthTokenService);
   });
 
   afterAll(async () => {
@@ -241,5 +316,183 @@ describe("Sessão via cookie httpOnly + CSRF (integração)", () => {
       .post("/auth/refresh")
       .set("Cookie", [`refresh_token=${refreshToken}`])
       .expect(401);
+  });
+
+  test("login de conta convidada (sem senha ainda) é bloqueado com mensagem distinta de 'credenciais inválidas'", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: "convidado@teste.local", password: "qualquer-coisa" })
+      .expect(401);
+
+    expect(res.body.message).toMatch(/não confirmada/i);
+  });
+
+  test("confirm-invite: token válido define a senha, confirma o e-mail, e permite login em seguida — token não pode ser reaproveitado", async () => {
+    const token = await authTokenService.issue("u2", "INVITE");
+
+    await request(app.getHttpServer())
+      .post("/auth/confirm-invite")
+      .send({ token, password: "senha-nova-do-convidado" })
+      .expect(204);
+
+    const loginOk = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: "convidado@teste.local", password: "senha-nova-do-convidado" })
+      .expect(200);
+    expect(loginOk.body.user.email).toBe("convidado@teste.local");
+
+    // Reusar o mesmo token de convite não funciona mais.
+    await request(app.getHttpServer())
+      .post("/auth/confirm-invite")
+      .send({ token, password: "outra-senha-qualquer" })
+      .expect(401);
+  });
+
+  test("confirm-invite: token expirado ou inexistente dá erro claro e não altera nada", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/auth/confirm-invite")
+      .send({ token: "token-que-nunca-existiu", password: "senha-nova-do-convidado" })
+      .expect(401);
+
+    expect(res.body.message).toMatch(/inválido ou expirado/i);
+  });
+
+  test("forgot-password: e-mail existente e confirmado — resposta genérica 204 e um e-mail de recuperação é 'enviado'", async () => {
+    emailSpy.sendPasswordResetEmail.mockClear();
+
+    await request(app.getHttpServer())
+      .post("/auth/forgot-password")
+      .send({ email: "admin@teste.local" })
+      .expect(204);
+
+    expect(emailSpy.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+    expect(emailSpy.sendPasswordResetEmail.mock.calls[0][0]).toBe("admin@teste.local");
+  });
+
+  test("forgot-password: e-mail inexistente — MESMA resposta genérica 204, e nenhum e-mail é enviado de verdade (só observável no teste, nunca na resposta)", async () => {
+    emailSpy.sendPasswordResetEmail.mockClear();
+
+    const res = await request(app.getHttpServer())
+      .post("/auth/forgot-password")
+      .send({ email: "nao-existe-no-sistema@teste.local" })
+      .expect(204);
+
+    expect(res.body).toEqual({});
+    expect(emailSpy.sendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  test("reset-password: token válido troca a senha e revoga TODAS as sessões ativas do usuário", async () => {
+    // Sessão ativa antes do reset.
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: "admin@teste.local", password: PLAIN_PASSWORD });
+    const oldRefreshToken = getCookie(login, "refresh_token");
+
+    const resetToken = await authTokenService.issue("u1", "PASSWORD_RESET");
+    await request(app.getHttpServer())
+      .post("/auth/reset-password")
+      .send({ token: resetToken, password: "senha-pos-reset-123" })
+      .expect(204);
+
+    // O refresh token emitido ANTES do reset não serve mais.
+    await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", [`refresh_token=${oldRefreshToken}`])
+      .expect(401);
+
+    // A senha nova já vale.
+    await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: "admin@teste.local", password: "senha-pos-reset-123" })
+      .expect(200);
+
+    // Restaura a senha original para não vazar estado entre testes deste describe.
+    users[0].passwordHash = await passwords.hash(PLAIN_PASSWORD);
+  });
+});
+
+/**
+ * Rate limiting em forgot-password (item 3 do adendo "Confirmação de
+ * e-mail e recuperação de senha" — implementado agora, não só sinalizado).
+ * Suíte isolada com sua PRÓPRIA instância de app/ThrottlerStorage: o
+ * ThrottlerGuard padrão rastreia por IP da requisição, que seria o mesmo
+ * (127.0.0.1, via supertest) para todos os testes já feitos acima nesse
+ * mesmo endpoint — reaproveitar o app de cima contaminaria a contagem.
+ */
+describe("Rate limiting: POST /auth/forgot-password", () => {
+  let app: INestApplication;
+  const passwords = new PasswordService();
+  const user = {
+    id: "ru1",
+    name: "Usuário Rate Limit",
+    email: "ratelimit@teste.local",
+    passwordHash: "hash-qualquer",
+    role: "ADMINISTRADOR",
+    active: true,
+    analystId: null,
+    lastLoginAt: null as Date | null,
+    emailConfirmedAt: new Date("2026-01-01") as Date | null,
+  };
+  const authTokens: { id: string; userId: string; type: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }[] = [];
+  const emailSpy = {
+    sendInviteEmail: jest.fn(async (_to: string, _name: string, _link: string) => undefined),
+    sendPasswordResetEmail: jest.fn(async (_to: string, _name: string, _link: string) => undefined),
+  };
+
+  const fakePrisma = {
+    user: { findUnique: jest.fn(async () => user), update: jest.fn(async () => user) },
+    refreshToken: { updateMany: jest.fn(async () => ({ count: 0 })) },
+    authToken: {
+      create: jest.fn(async ({ data }: any) => {
+        const row = { id: `at-${authTokens.length + 1}`, usedAt: null, ...data };
+        authTokens.push(row);
+        return row;
+      }),
+      updateMany: jest.fn(async () => ({ count: 0 })),
+      findFirst: jest.fn(async () => null),
+      update: jest.fn(async () => ({})),
+    },
+    $transaction: jest.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+  };
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          ignoreEnvFile: true,
+          load: [() => ({ JWT_ACCESS_SECRET: "test-secret", JWT_ACCESS_TTL: "15m", COOKIE_SECURE: "false" })],
+        }),
+        PassportModule,
+        JwtModule.register({}),
+        ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }]),
+      ],
+      controllers: [AuthController],
+      providers: [
+        AuthService,
+        PasswordService,
+        AuthTokenService,
+        { provide: EmailService, useValue: emailSpy },
+        JwtStrategy,
+        JwtAuthGuard,
+        { provide: PrismaService, useValue: fakePrisma },
+        { provide: APP_GUARD, useClass: CsrfGuard },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.use(cookieParser());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  test("permite até o limite (5 em 60s) e bloqueia (429) a partir da 6ª tentativa", async () => {
+    for (let i = 0; i < 5; i++) {
+      await request(app.getHttpServer()).post("/auth/forgot-password").send({ email: user.email }).expect(204);
+    }
+    await request(app.getHttpServer()).post("/auth/forgot-password").send({ email: user.email }).expect(429);
   });
 });
