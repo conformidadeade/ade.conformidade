@@ -3,16 +3,25 @@
 import { type SessionUser, useAuthStore } from "@/lib/stores/auth-store";
 
 /**
- * Adendo "Deploy em produção: Vercel + Railway + Cloudflare" (09/09/2026)
- * — sempre um caminho RELATIVO (nunca uma URL absoluta cross-origin). O
- * navegador só fala com a própria origem do frontend; o `rewrites()` em
- * next.config.ts é quem repassa `/api/*` para o backend de verdade (via
- * `API_PROXY_TARGET`, variável de ambiente só do servidor Next.js — o
- * navegador nunca vê essa URL). É isto que faz o cookie de sessão
- * `httpOnly` parecer "mesma origem" mesmo com frontend (Vercel) e backend
- * (Railway) sendo domínios diferentes de verdade.
+ * Adendo "Deploy em produção" (09/09/2026) — revisão de 09/09/2026: URL
+ * ABSOLUTA de novo (não mais um caminho relativo via proxy). A ideia
+ * original era um proxy same-origin (`rewrites()` do Next.js repassando
+ * `/api/*` pro Railway, escondendo do navegador que são domínios
+ * diferentes) — abandonada depois de confirmado em produção que a Vercel
+ * recusa fazer esse proxy pro range de IP do Railway
+ * (`DNS_HOSTNAME_RESOLVED_PRIVATE`, limitação de infraestrutura entre os
+ * dois provedores, não corrigível por configuração nossa).
+ *
+ * O navegador agora fala DIRETO com a API (`api.<domínio>`), uma origem
+ * genuinamente diferente do frontend (`www.<domínio>`) — a sessão
+ * continua funcionando porque o cookie é emitido com
+ * `Domain=.<domínio-raiz>` (ver `apps/api/src/auth/auth-cookies.ts`),
+ * válido para os dois subdomínios; e porque os dois são "same-site"
+ * (mesmo domínio registrável), então `SameSite=Lax` no cookie continua
+ * sendo enviado nessas chamadas sem precisar de `SameSite=None`. CORS
+ * explícito no backend (`CORS_ORIGIN`) cobre a parte de origem cruzada.
  */
-const API_URL = "/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4001";
 const CSRF_COOKIE_NAME = "XSRF-TOKEN";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);

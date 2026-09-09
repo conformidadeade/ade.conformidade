@@ -58,11 +58,11 @@ pnpm --filter @reanalise-erp/web dev
 HTTPS) e `CORS_ORIGIN="http://localhost:4002"` — ajuste os dois para produção (ver
 `docs/DEPLOY.md` e `docs/DECISIONS.md`, adendo "Segurança de sessão").
 
-O frontend nunca fala direto com a API — `apps/web/.env.local.example` traz
-`API_PROXY_TARGET="http://localhost:4001"`, que o `rewrites()` de `next.config.ts` usa
-para repassar `/api/*` para a API local. Isso simula em dev exatamente a mesma
-topologia de produção (proxy same-origin Vercel → Railway, ver `docs/DEPLOY.md`) — em
-vez de uma URL absoluta cross-origin, o browser só fala com o próprio `localhost:4002`.
+`apps/web/.env.local.example` traz `NEXT_PUBLIC_API_URL="http://localhost:4001"` — o
+frontend chama a API diretamente (URL absoluta), sem proxy. A sessão funciona entre
+as duas portas locais porque `:4002` e `:4001` já são "same-site" (mesmo host,
+`localhost`) — ver `docs/DEPLOY.md` para o porquê de não ter mais proxy same-origin
+em produção também.
 
 ```
 pnpm test     # roda os testes de todos os pacotes/apps (Jest)
@@ -105,11 +105,13 @@ cookie `httpOnly` + CSRF double-submit (adendo "Segurança de sessão", 08/09/20
 ## Deploy em produção
 
 Ver [`docs/DEPLOY.md`](docs/DEPLOY.md) para o passo a passo completo de Vercel
-(frontend) + Railway (backend + Postgres) + Cloudflare (DNS), incluindo o
-`Dockerfile` da API (`apps/api/Dockerfile`), variáveis de ambiente de cada
-serviço e estimativa de custo. Resumo do que já está pronto no código: HTTPS
-automático nos dois serviços, proxy same-origin (`rewrites()` do Next.js) para
-o cookie de sessão funcionar sem CORS complicado, migrations do Prisma
+(frontend, `www.<domínio>`) + Railway (backend + Postgres, `api.<domínio>`) +
+Cloudflare (DNS), incluindo o `Dockerfile` da API (`apps/api/Dockerfile`),
+variáveis de ambiente de cada serviço e estimativa de custo. Resumo do que já
+está pronto no código: HTTPS automático nos dois serviços, sessão via cookie
+de domínio compartilhado entre os dois subdomínios (`COOKIE_DOMAIN`) — não
+mais via proxy same-origin, que se mostrou incompatível com o range de IP do
+Railway na prática (ver `docs/DECISIONS.md`) —, migrations do Prisma
 aplicadas automaticamente a cada deploy (`prisma migrate deploy` no `CMD` do
 container).
 

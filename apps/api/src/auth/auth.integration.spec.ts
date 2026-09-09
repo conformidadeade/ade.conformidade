@@ -161,10 +161,9 @@ describe("Sessão via cookie httpOnly + CSRF (integração)", () => {
 
     expect(accessCookie).toMatch(/HttpOnly/i);
     expect(refreshCookie).toMatch(/HttpOnly/i);
-    // /api/auth, não /auth — o navegador só vai chamar via o proxy same-origin
-    // da Vercel (adendo "Deploy em produção"), então o path do cookie precisa
-    // bater com o que ELE vê (/api/auth/…), não com a rota real do backend.
-    expect(refreshCookie).toMatch(/Path=\/api\/auth/i);
+    // /auth (não /api/auth) — sem proxy, o navegador chama a rota real do
+    // backend diretamente (adendo "Deploy em produção", revisado 09/09/2026).
+    expect(refreshCookie).toMatch(/Path=\/auth/i);
     // CSRF cookie é DELIBERADAMENTE legível por JS (não HttpOnly) — é a metade "conhecida pelo cliente" do double-submit.
     expect(csrfCookie).not.toMatch(/HttpOnly/i);
   });

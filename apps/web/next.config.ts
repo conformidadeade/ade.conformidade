@@ -1,33 +1,16 @@
 import type { NextConfig } from "next";
 
 /**
- * Adendo "Deploy em produção: Vercel + Railway + Cloudflare" (09/09/2026).
- *
- * Nunca hardcode o domínio do backend aqui (nem o do Railway, nem o
- * "final" quando o domínio próprio existir) — sempre via env var. Em dev
- * local aponta para a API local (localhost:4001); em produção, para a URL
- * do backend no Railway (configurada no painel da Vercel).
- *
- * Não é `NEXT_PUBLIC_*` de propósito: só o SERVIDOR do Next.js precisa
- * saber esse destino para fazer o proxy — o navegador nunca faz uma
- * requisição direta a ele, só ao próprio domínio do frontend (`/api/*`).
+ * Adendo "Deploy em produção" (09/09/2026) — sem rewrites(). A ideia
+ * original era um proxy same-origin repassando /api/* pro Railway, mas a
+ * Vercel recusa fazer esse proxy pro range de IP do Railway
+ * (DNS_HOSTNAME_RESOLVED_PRIVATE, confirmado em produção — limitação de
+ * infraestrutura entre os dois provedores). O frontend agora chama a API
+ * diretamente por uma URL absoluta (NEXT_PUBLIC_API_URL, ver
+ * apps/web/lib/api/client.ts); a sessão funciona entre as duas origens
+ * via cookie de domínio compartilhado (COOKIE_DOMAIN=".<domínio-raiz>"
+ * no backend) + CORS explícito, não mais via "mesma origem" estrita.
  */
-const API_PROXY_TARGET = process.env.API_PROXY_TARGET ?? "http://localhost:4001";
-
-const nextConfig: NextConfig = {
-  async rewrites() {
-    return [
-      {
-        // Repassa toda chamada /api/* para o backend — do ponto de vista
-        // do navegador, front e API são a MESMA origem (necessário para o
-        // cookie de sessão httpOnly, adendo "Segurança de sessão"). O
-        // backend não tem prefixo /api nas suas próprias rotas (ex.:
-        // POST /auth/login), então o destino aqui NÃO repete o /api.
-        source: "/api/:path*",
-        destination: `${API_PROXY_TARGET}/:path*`,
-      },
-    ];
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

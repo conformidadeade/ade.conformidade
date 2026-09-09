@@ -25,16 +25,11 @@ const REFRESH_TOKEN_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Caminho restrito do refresh token — só trafega para as próprias rotas de
- * auth, nunca para o resto da API. Adendo "Deploy em produção" (09/09/2026):
- * o path de um cookie é sempre relativo ao que o NAVEGADOR pediu, não ao
- * que o backend "realmente" atende — e com o proxy same-origin da Vercel
- * (`rewrites()` em next.config.ts), o navegador SEMPRE chama `/api/auth/…`,
- * nunca `/auth/…` diretamente. Por isso o prefixo `/api` aqui, mesmo o
- * backend não tendo esse prefixo nas próprias rotas — errar isso quebraria
- * silenciosamente o refresh (cookie gravado, mas nunca reenviado pelo
- * navegador por não bater o path).
+ * auth, nunca para o resto da API. `/auth` (sem prefixo) porque o
+ * navegador chama a API DIRETAMENTE (ver nota sobre o abandono do proxy
+ * same-origin logo abaixo), então o path bate com a rota real do backend.
  */
-const REFRESH_COOKIE_PATH = "/api/auth";
+const REFRESH_COOKIE_PATH = "/auth";
 
 function cookieBase(config: ConfigService) {
   return {
@@ -42,15 +37,25 @@ function cookieBase(config: ConfigService) {
     // confirmada), mas quebraria o dev local em http://localhost. Ligado
     // por padrão; só desligado explicitamente via env em dev.
     secure: config.get<string>("COOKIE_SECURE", "true") === "true",
-    // Deixe SEMPRE vazio (host-only cookie) — inclusive em produção. Com o
-    // proxy same-origin da Vercel, o navegador nunca fala diretamente com
-    // o Railway; ele só vê o próprio domínio do frontend, e é a esse
-    // domínio que o cookie precisa ficar implicitamente restrito. Definir
-    // aqui o domínio do Railway quebraria o cookie (o navegador rejeita/
-    // ignora um Domain que não bate com quem respondeu à requisição do
-    // ponto de vista dele). Só existe para um cenário futuro hipotético
-    // sem proxy (ex.: subdomínios tipo api.<dominio> + app.<dominio>
-    // compartilhando sessão) — não é o caso hoje.
+    // Adendo "Deploy em produção" (09/09/2026) — revisão de 09/09/2026:
+    // a ideia original era um proxy same-origin via rewrites() do Next.js
+    // (front e API parecendo o MESMO domínio pro navegador), com
+    // COOKIE_DOMAIN sempre vazio. Abandonado depois de confirmado em
+    // produção que a Vercel classifica o range de IP do Railway como
+    // "privado" (DNS_HOSTNAME_RESOLVED_PRIVATE) e recusa fazer o proxy —
+    // limitação de infraestrutura entre os dois provedores, não algo
+    // corrigível por configuração de DNS/hostname (testado com hostnames
+    // diferentes apontando pro mesmo IP, mesmo erro).
+    //
+    // Solução adotada: cookie de DOMÍNIO COMPARTILHADO entre subdomínios
+    // do mesmo domínio raiz — COOKIE_DOMAIN=".adeonline.com.br" (com
+    // ponto na frente) em produção, deixando o cookie válido tanto para
+    // www.adeonline.com.br (frontend) quanto api.adeonline.com.br
+    // (backend). O navegador considera os dois "same-site" (mesmo
+    // domínio registrável) mesmo não sendo "same-origin" — SameSite=Lax
+    // abaixo continua funcionando normalmente nesse cenário, sem precisar
+    // de "None". Em dev local, deixe vazio (cookie host-only, cada porta
+    // de localhost já é "same-site" o bastante para Lax funcionar).
     domain: config.get<string>("COOKIE_DOMAIN") || undefined,
     // "lax": cobre o caso normal de SPA same-site (login por formulário,
     // navegação) sem quebrar nada hoje; não usamos links de terceiros que

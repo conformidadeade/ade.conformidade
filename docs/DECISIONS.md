@@ -72,21 +72,52 @@ Removido o escopo mensal do Dashboard: todos os indicadores e gráficos (Libera�
 
 Substitui a abordagem anterior de EC2 + Caddy (nunca chegou a ser implementada — só
 estava registrada como plano em aberto). Ver `docs/DEPLOY.md` para o passo a passo
-completo. Decisões técnicas tomadas ao implementar:
+completo.
 
-1. **Proxy same-origin via `rewrites()` do Next.js**, não CORS cross-origin direto —
+**Revisão de arquitetura, mesmo dia (09/09/2026) — proxy same-origin abandonado:**
+o plano original (item 1 abaixo) usava `rewrites()` do Next.js para o front e a API
+parecerem a mesma origem para o navegador. Testado no deploy real e encontrado
+quebrado: a Vercel recusa fazer o proxy para o range de IP do Railway
+(`DNS_HOSTNAME_RESOLVED_PRIVATE` — ela classifica esse range como "privado",
+incorretamente). Confirmado que não é problema de hostname/DNS nosso: testado com
+dois hostnames diferentes do Railway apontando para o mesmo range de IP, mesmo erro
+nos dois. É uma limitação de infraestrutura entre os dois provedores, fora do nosso
+controle.
+
+**Solução adotada:** cookie de domínio compartilhado entre subdomínios, não mais
+"mesma origem" estrita. `COOKIE_DOMAIN` no backend passa a ser `.{domínio-raiz}`
+(com ponto na frente) em produção — o cookie fica válido tanto para
+`www.{domínio}` (frontend) quanto `api.{domínio}` (backend). Os dois são
+"same-site" (mesmo domínio registrável) mesmo não sendo "same-origin", então
+`SameSite=Lax` continua funcionando sem precisar de `SameSite=None`. O frontend
+volta a chamar a API por uma URL absoluta (`NEXT_PUBLIC_API_URL`), e CORS
+(`CORS_ORIGIN`) volta a ser estritamente necessário (não é mais só "camada extra de
+defesa" como o item 1 abaixo dizia). `next.config.ts` não tem mais `rewrites()`;
+`REFRESH_COOKIE_PATH` em `auth-cookies.ts` voltou a ser `/auth` (não `/api/auth`).
+Testado localmente simulando o cenário cross-origin real (requisição com header
+`Origin` diferente, como o navegador manda) antes de subir — CORS, cookies e a
+suíte completa de testes (84 testes) continuam passando.
+
+Decisões técnicas tomadas ao implementar (histórico — item 1 é o que foi
+substituído pela revisão acima; itens 2 em diante continuam válidos):
+
+1. ~~**Proxy same-origin via `rewrites()` do Next.js**, não CORS cross-origin direto —
    necessário para o cookie `httpOnly` funcionar sem reabrir a discussão de segurança
    do adendo anterior. `apps/web/lib/api/client.ts` passou a usar só o caminho relativo
    `/api/...` (nunca mais uma URL absoluta); `API_PROXY_TARGET` (env var só do
-   servidor Next.js) substituiu `NEXT_PUBLIC_API_URL`.
-2. **Bug pego no caminho:** o cookie do refresh token usava `path=/auth` — com o proxy,
+   servidor Next.js) substituiu `NEXT_PUBLIC_API_URL`.~~ **Abandonado — ver revisão de
+   arquitetura acima.**
+2. ~~**Bug pego no caminho:** o cookie do refresh token usava `path=/auth` — com o proxy,
    o navegador só chama `/api/auth/...`, então esse path nunca bateria e o refresh
    quebraria silenciosamente em produção. Corrigido para `path=/api/auth` (só isso; o
-   access token e o CSRF token já usavam `path=/`, sem esse problema).
-3. **`COOKIE_DOMAIN` deve ficar sempre vazio**, inclusive em produção — corrigido um
+   access token e o CSRF token já usavam `path=/`, sem esse problema).~~ **Revertido —
+   voltou a ser `/auth`, sem proxy.**
+3. ~~**`COOKIE_DOMAIN` deve ficar sempre vazio**, inclusive em produção — corrigido um
    comentário anterior (adendo "Segurança de sessão") que sugeria preencher com o
    domínio do backend; com o proxy, isso quebraria o cookie (o navegador nunca fala
-   diretamente com o Railway).
+   diretamente com o Railway).~~ **Invertido de novo — ver revisão de arquitetura
+   acima: `COOKIE_DOMAIN=".{domínio-raiz}"` é exatamente o que faz a sessão funcionar
+   agora, sem proxy.**
 4. **`pnpm deploy` não foi usado no Dockerfile** — testado localmente e encontrado
    quebrado nesta versão do pnpm (11.20.0): regressão conhecida
    (pnpm/pnpm#13754) faz os pacotes `workspace:*` ficarem symlinkados para FORA da
@@ -100,16 +131,16 @@ completo. Decisões técnicas tomadas ao implementar:
    do container; `ts-node` para rodar o seed manual via `prisma:seed`).
 6. **`postinstall` adicionado** (`prisma generate`) — garante que o Prisma Client
    nunca fique dessincronizado do schema depois de um install, em qualquer ambiente.
-7. **Risco do limite de 10s do plano Hobby da Vercel (levantado no adendo original):**
+7. ~~**Risco do limite de 10s do plano Hobby da Vercel (levantado no adendo original):**
    investigado com a documentação oficial da Vercel (09/09/2026) — um `rewrites()`
    para URL externa roda na camada de roteamento (limite de 120s,
-   `ROUTER_EXTERNAL_TARGET_ERROR`), não invoca uma Vercel Function; o limite de 10s
-   citado no adendo parece ser informação desatualizada (Hobby hoje default 300s com
-   Fluid Compute). Medido localmente através do proxy: exportações reais em
-   <1s; importação de planilha com 20.000 linhas sintéticas (maior que o maior import
-   real já feito) em 8,86s — folgado mesmo se o limite legado de 10s se aplicasse
-   (não deveria). **Não confirmado 100% até o deploy real** — ver `docs/DEPLOY.md`,
-   seção 4, para o que testar de novo assim que subir.
+   `ROUTER_EXTERNAL_TARGET_ERROR`), não invoca uma Vercel Function...~~ **Discussão
+   ficou sem objeto com o abandono do proxy** (item 1) — sem `rewrites()`, não existe
+   mais um limite da Vercel no meio do caminho para essa chamada específica (o
+   navegador fala direto com o Railway). Os números medidos (exportações <1s,
+   importação de 20.000 linhas em 8,86s) continuam valendo como referência real de
+   performance do backend, só não como resposta a um limite de proxy que não existe
+   mais nesse fluxo.
 8. **`.gitignore` corrigido:** `apps/web/.env.local.example` nunca foi versionado
    (o padrão `!.env.example` não cobria `.env.local.example`, um nome diferente) —
    um clone novo do repositório nunca teria esse arquivo, quebrando o próprio passo
