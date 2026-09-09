@@ -66,7 +66,7 @@ FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
 COPY --from=build /repo/node_modules ./node_modules
-COPY --from=build /repo/package.json /repo/pnpm-workspace.yaml /repo/.npmrc ./
+COPY --from=build /repo/package.json /repo/pnpm-workspace.yaml /repo/.npmrc /repo/tsconfig.base.json ./
 COPY --from=build /repo/packages ./packages
 COPY --from=build /repo/apps/api ./apps/api
 WORKDIR /repo/apps/api
