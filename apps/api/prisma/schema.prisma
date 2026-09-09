@@ -13,6 +13,12 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" cobre o dev local (Windows); "debian-openssl-3.0.x" cobre o
+  // runtime de produção (Railway, imagem node:22-slim/Debian 12) —
+  // achado num deploy real: a auto-detecção do Prisma falhava em
+  // reconhecer o OpenSSL 3 do Debian 12 ("Schema engine error" sem
+  // mais detalhe em runtime), mesmo com o pacote openssl instalado.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
