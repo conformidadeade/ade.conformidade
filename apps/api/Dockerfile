@@ -38,8 +38,11 @@ FROM node:22-slim AS base
 # libssl — node:22-slim (Debian) não vem com isso instalado por padrão.
 # Sem isso, "prisma migrate deploy" falha em runtime com "Schema engine
 # error" (visto de verdade num deploy real no Railway). Instalado aqui no
-# estágio base (build E runtime) para o binário gerado no build já ser
-# compatível com o ambiente onde ele vai rodar.
+# estágio base — build E runtime herdam DESTE estágio (ver "FROM base AS
+# runtime" abaixo; não "FROM node:22-slim AS runtime" de novo, que foi
+# exatamente o bug real na primeira tentativa dessa correção: o estágio
+# final começava do zero, sem essa instalação, mesmo com ela presente no
+# build).
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /repo
@@ -59,7 +62,7 @@ RUN CI=true pnpm install --prod --frozen-lockfile
 
 # ---- runtime: imagem final — só o necessário para rodar a API, sem o
 # código-fonte/dependências do apps/web ----
-FROM node:22-slim AS runtime
+FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
 COPY --from=build /repo/node_modules ./node_modules
