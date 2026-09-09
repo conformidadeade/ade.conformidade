@@ -27,8 +27,13 @@
 # as dependências podadas, incluindo login e `prisma migrate deploy` via
 # `npx`. Otimizar o tamanho da imagem fica para depois, sem bloquear o
 # deploy funcionando.
+#
+# Node 22 (não 20): pnpm 11 usa o módulo interno `node:sqlite`, disponível
+# só a partir do Node 22.13 — com Node 20 o build falha com
+# ERR_UNKNOWN_BUILTIN_MODULE em "pnpm install" (visto de verdade num
+# primeiro deploy no Railway, corrigido depois).
 
-FROM node:20-slim AS base
+FROM node:22-slim AS base
 RUN corepack enable
 WORKDIR /repo
 
@@ -47,7 +52,7 @@ RUN CI=true pnpm install --prod --frozen-lockfile
 
 # ---- runtime: imagem final — só o necessário para rodar a API, sem o
 # código-fonte/dependências do apps/web ----
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
 COPY --from=build /repo/node_modules ./node_modules
