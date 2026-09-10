@@ -224,6 +224,34 @@ chave de API do Resend usada nesse teste apareceu em texto puro numa captura
 de tela — recomendado revogá-la no painel do Resend e gerar uma nova assim
 que possível, só trocando o valor da variável no Railway.
 
+## Adendo "Navegação e layout responsivo para mobile" — confirmado e implementado (09/09/2026)
+
+Sidebar fixa de desktop inacessível no celular (nenhum jeito de navegar fora de
+`/dashboard`) — corrigido com um menu hambúrguer abaixo do breakpoint `md`, um
+painel deslizante lateral sobre o mesmo primitivo Radix Dialog já usado no
+sistema (`components/ui/dialog.tsx`), sem dependência nova. A lista de itens e a
+regra de visibilidade por papel foram extraídas para `components/shell/nav-list.tsx`
+— fonte única reaproveitada pela Sidebar (desktop) e pelo MobileNav, para as duas
+nunca divergirem. Desktop (`md`+) permanece bit a bit igual a antes.
+
+Verificação do restante do sistema (filtros, tabelas, tela de Login) encontrou que
+já estavam razoavelmente preparados para mobile antes deste adendo — filtros já
+empilhavam em `grid-cols-1` abaixo de `sm`, tabelas já tinham rolagem horizontal
+num contêiner (componente `Table` compartilhado), e o Login já funcionava bem
+(confirmado, sem mudança). O ajuste ficou concentrado em: cabeçalhos com título +
+botões de ação empilhando em telas pequenas (Mapa, Mapa de Habilidades, Diretrizes,
+Usuários); modais com margem lateral e altura máxima com rolagem vertical (fix no
+componente `Dialog` compartilhado — cobre de graça a tabela de erros de importação
+e os drill-downs, que podem ter muitas linhas, sem mudança por página); linhas de
+botões que podiam transbordar em telas muito estreitas (Exportar Excel/PDF,
+Importar/Registro manual) com `flex-wrap`; cards de indicador do Dashboard
+passando a 1 coluna abaixo de `sm`.
+
+**Validado manualmente pela liderança (09/09/2026)** — sem testes automatizados de
+frontend ainda (ver nota já registrada mais acima), a verificação foi visual/manual
+conforme o checklist do próprio adendo (larguras ~375px/~390-430px/~768px, os três
+papéis, claro/escuro, sem regressão em desktop): "está funcionando perfeitamente".
+
 ## Em aberto — não implementar sem confirmar (item 28)
 
 Sinalizadas no requisito original e ainda pendentes de decisão da liderança. Cada uma será revisitada quando a funcionalidade correspondente for implementada, com uma proposta explícita antes do código, não assumida silenciosamente:
