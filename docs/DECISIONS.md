@@ -214,6 +214,16 @@ endpoints citados, em suítes isoladas com sua própria instância de app (o
 `ThrottlerGuard` padrão rastreia por IP da requisição — reaproveitar a mesma
 instância de app dos outros testes contaminaria a contagem entre eles).
 
+**Validado em produção (09/09/2026, ao vivo, pela liderança):** domínio
+`adeonline.com.br` verificado no Resend; `RESEND_API_KEY`/`EMAIL_FROM`
+configurados no Railway; os dois fluxos testados de ponta a ponta no ambiente
+real — convite de conta nova (e-mail recebido, link `/definir-senha/...`
+funcionando) e "esqueci minha senha" (e-mail recebido, link
+`/redefinir-senha/...` funcionando). Pendência apontada durante o teste: a
+chave de API do Resend usada nesse teste apareceu em texto puro numa captura
+de tela — recomendado revogá-la no painel do Resend e gerar uma nova assim
+que possível, só trocando o valor da variável no Railway.
+
 ## Em aberto — não implementar sem confirmar (item 28)
 
 Sinalizadas no requisito original e ainda pendentes de decisão da liderança. Cada uma será revisitada quando a funcionalidade correspondente for implementada, com uma proposta explícita antes do código, não assumida silenciosamente:
