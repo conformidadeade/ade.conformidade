@@ -38,7 +38,7 @@ export function ExportButtons({ basePath, baseFilename }: ExportButtonsProps) {
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" size="sm" disabled={!!pending} onClick={() => handleExport("xlsx")}>
           <FileSpreadsheet className="size-4" />
           {pending === "xlsx" ? "Exportando…" : "Exportar Excel"}

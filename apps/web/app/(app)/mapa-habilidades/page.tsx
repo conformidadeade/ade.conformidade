@@ -63,7 +63,7 @@ export default function MapaHabilidadesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Mapa de Habilidades</h1>
           <p className="text-sm text-muted-foreground">
@@ -72,9 +72,9 @@ export default function MapaHabilidadesPage() {
               : "Quais combinações Cliente + Meio cada analista já demonstrou saber operar — independente do status atual de liberação. Clique numa linha para ver as evidências."}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
+        <div className="flex flex-col items-end gap-2 sm:shrink-0">
           {canWrite && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <ImportDialog onImported={() => queryClient.invalidateQueries({ queryKey: ["skills"] })} />
               <ManualSkillDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["skills"] })} />
             </div>

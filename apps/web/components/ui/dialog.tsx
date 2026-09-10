@@ -14,7 +14,14 @@ function DialogContent({ className, children, ...props }: React.ComponentProps<t
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-lg",
+          // `w-[calc(100%-2rem)]` (em vez de `w-full`) garante uma margem de
+          // respiro nas bordas em telas pequenas (adendo "Navegação e layout
+          // responsivo para mobile", 09/09/2026) — sem isso o modal ficava
+          // colado nas duas bordas da tela em vez de "largura quase total".
+          // `max-h` + `overflow-y-auto` evita que um modal com conteúdo longo
+          // (ex.: tabela de erros de importação, drill-down com muitas linhas)
+          // saia da tela verticalmente sem jeito de rolar até o rodapé/botões.
+          "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md max-h-[90vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-lg",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
           className,
         )}

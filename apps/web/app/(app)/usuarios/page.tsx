@@ -151,7 +151,7 @@ export default function UsuariosPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Usuários</h1>
           <p className="text-sm text-muted-foreground">Contas de acesso ao sistema — restrito a administradores.</p>

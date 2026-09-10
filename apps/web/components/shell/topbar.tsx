@@ -5,6 +5,7 @@ import { LogOut } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { MobileNav } from "./mobile-nav";
 import { ThemeToggle } from "./theme-toggle";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -33,7 +34,7 @@ export function Topbar() {
 
   return (
     <header className="h-16 border-b border-border flex items-center justify-between px-4 md:px-6 shrink-0">
-      <div />
+      <MobileNav />
       <div className="flex items-center gap-3">
         <ThemeToggle />
         {user && (

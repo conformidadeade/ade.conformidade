@@ -133,7 +133,7 @@ export default function DashboardPage() {
               Indicadores recalculados para o recorte selecionado.
             </p>
           )}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* "Analistas ativos" é um número da empresa toda — não recalculado
                para o ANALISTA (ver observação sobre este indicador). */}
             {!isAnalista && <IndicatorCard label="Analistas ativos" value={data.totalActiveAnalysts} />}
